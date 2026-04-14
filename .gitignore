@@ -92,10 +92,15 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific
-Data/          # Example data directory
-Data/**        # All files in Data directory recursively
+Data/          # Ignore all files in Data directory
+!Data/.gitignore  # Except keep the .gitignore file in Data
 thoughts/      # Internal development notes and artifacts
-202604132056debug.md  # Temporary debug file
+thoughts/**     # Also ignore all contents recursively  
+thoughts/*      # Also ignore all files in thoughts directory
+thoughts        # Also ignore thoughts (without slash)
+thoughts/**/*   # Also ignore all files recursively
+202604132056debug.md
+debug*.md       # All debug files
 *.snirf         # Large SNIRF files (example output)
 *.csv           # Large CSV files (example output)
 *.acq           # Large ACQ files (example data)
@@ -125,3 +130,4 @@ cleaned/
 # Generated files from tests and coverage
 multichsync/**/*.py,cover
 **/*,cover
+thoughts/

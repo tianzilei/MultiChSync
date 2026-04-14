@@ -1,0 +1,26 @@
+[run]
+source = multichsync
+branch = True
+omit =
+    */tests/*
+    */__pycache__/*
+    */.venv/*
+    */venv/*
+    */examples/*
+    */scripts/*
+
+[report]
+precision = 2
+show_missing = True
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+    typing.TYPE_CHECKING
+
+[html]
+directory = htmlcov
