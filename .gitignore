@@ -92,7 +92,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific
-Data/           # Example data directory
+Data/          # Example data directory
 *.snirf         # Large SNIRF files (example output)
 *.csv           # Large CSV files (example output)
 *.acq           # Large ACQ files (example data)
