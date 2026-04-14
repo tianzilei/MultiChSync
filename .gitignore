@@ -95,6 +95,7 @@ Thumbs.db
 Data/          # Example data directory
 Data/**        # All files in Data directory recursively
 thoughts/      # Internal development notes and artifacts
+202604132056debug.md  # Temporary debug file
 *.snirf         # Large SNIRF files (example output)
 *.csv           # Large CSV files (example output)
 *.acq           # Large ACQ files (example data)
