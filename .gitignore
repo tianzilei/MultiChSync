@@ -93,6 +93,7 @@ Thumbs.db
 
 # Project-specific
 Data/          # Example data directory
+Data/**        # All files in Data directory recursively
 *.snirf         # Large SNIRF files (example output)
 *.csv           # Large CSV files (example output)
 *.acq           # Large ACQ files (example data)
