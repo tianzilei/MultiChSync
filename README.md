@@ -157,6 +157,19 @@ pip install -e .
 pytest tests/
 ```
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[English Documentation](docs/en/README.md)** - Complete English documentation
+- **[中文文档](docs/zh/README.md)** - Chinese documentation (partial translation)
+
+The documentation includes:
+- Installation and quickstart guides
+- Module-specific guides (fNIRS, EEG, ECG, marker, quality)
+- API reference and architecture overview
+- Technical specifications and development guidelines
+
 ## License
 
 MIT License

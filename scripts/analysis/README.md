@@ -1,13 +1,13 @@
-# 分析脚本
+# Analysis Scripts
 
-此目录包含数据分析脚本，用于处理 MultiChSync 生成的数据。
+This directory contains data analysis scripts for processing MultiChSync generated data.
 
-## 可用脚本
+## Available Scripts
 
-- `batch_quality_report.py`: 批量质量报告生成
-- `marker_statistics.py`: Marker 统计分析
-- `data_visualization.py`: 数据可视化
+- `batch_quality_report.py`: Batch quality report generation
+- `marker_statistics.py`: Marker statistical analysis
+- `data_visualization.py`: Data visualization
 
-## 使用说明
+## Usage
 
-这些脚本用于后处理和分析，可根据需要自定义。
+These scripts are for post-processing and analysis, and can be customized as needed.
