@@ -5,7 +5,7 @@ from .batch import batch_convert_fnirs_to_snirf
 try:
     from .mne_patch import patch_snirf_for_mne, patch_snirf_inplace
 except ImportError:
-    # 如果h5py不可用，提供存根函数
+    # If h5py not available, provide stub function
     patch_snirf_for_mne = None
     patch_snirf_inplace = None
 

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import h5py
 
-# 尝试导入mne，如果不可用则提供存根
+# Try to import mne, provide stub if not available
 try:
     import mne
     from mne.time_frequency import psd_array_welch
@@ -29,11 +29,11 @@ try:
     MNE_AVAILABLE = True
 except ImportError:
     MNE_AVAILABLE = False
-    # 提供存根以便模块可以导入，但函数会抛出ImportError
+    # Provide stub so module can import, but function will raise ImportError
     mne = None
     psd_array_welch = None
 
-# 尝试导入mne_nirs，用于写入SNIRF文件（可选）
+# Try to import mne_nirs, for writing SNIRF file (optional)
 try:
     from mne_nirs.io import write_raw_snirf
 
@@ -44,7 +44,7 @@ except ImportError:
 
 
 # =========================
-# 基础工具函数
+# Basic utility functions
 # =========================
 def safe_corr(x: np.ndarray, y: np.ndarray) -> float:
     """安全计算相关性，处理缺失值和零方差"""
@@ -72,7 +72,7 @@ def round_dataframe(df: pd.DataFrame, decimals: int = 2) -> pd.DataFrame:
         if df[col].dtype in [np.float64, np.float32, float]:
             df[col] = df[col].round(decimals)
         elif isinstance(df[col].iloc[0] if len(df) > 0 else None, dict):
-            # 嵌套字典列
+            # Nested dict column
             df[col] = df[col].apply(
                 lambda x: (
                     {
@@ -214,7 +214,7 @@ def bandpower_from_psd(
 
 
 # =========================
-# 滤波函数
+# Filter function
 # =========================
 def smart_filter_raw(
     raw, l_freq: float = 0.01, h_freq: float = 0.2, verbose: bool = False
@@ -241,7 +241,7 @@ def smart_filter_raw(
 
     use_iir = False
 
-    # 对低高通 + 短记录优先使用 IIR
+    # Prefer IIR for low/high pass + short recordings
     if l_freq is not None and l_freq <= 0.02 and duration_sec < 300:
         use_iir = True
 
@@ -569,7 +569,7 @@ def map_metric_to_score(value: float, metric_type: str, a: float, b: float) -> f
 
 
 # =========================
-# SNR 计算函数
+# SNR calculation function
 # =========================
 def compute_hb_snr(
     raw,
@@ -665,7 +665,7 @@ def compute_hb_snr(
 
 
 # =========================
-# 质量评估函数
+# Quality assessment function
 # =========================
 
 
@@ -1499,7 +1499,7 @@ def compute_resting_metrics(
 
 
 # =========================
-# 质量评估函数 (original)
+# Quality assessment function (original)
 # =========================
 def assess_hb_quality(raw) -> Tuple[pd.DataFrame, List[str]]:
     """
@@ -1603,7 +1603,7 @@ def assess_hb_quality(raw) -> Tuple[pd.DataFrame, List[str]]:
 
 
 # =========================
-# 单文件处理函数
+# Single file processing function
 # =========================
 def process_one_snirf(
     snirf_path: str | Path,
@@ -1614,10 +1614,10 @@ def process_one_snirf(
     apply_tddr: bool = True,
     signal_band: Tuple[float, float] = (0.01, 0.2),
     noise_band: Tuple[float, float] = (0.2, 0.5),
-    comprehensive: bool = True,  # 默认启用综合信号水平评估
+    comprehensive: bool = True,  # Enable comprehensive signal level assessment by default
     paradigm: str = "resting",
     events: Optional[Dict[str, Any]] = None,
-    write_metadata: bool = True,  # 默认启用元数据写入
+    write_metadata: bool = True,  # Enable metadata writing by default
     output_snirf_path: Optional[str | Path] = None,
     write_report_csv: bool = True,
     overwrite: bool = False,
@@ -1665,12 +1665,12 @@ def process_one_snirf(
     if resample_sfreq is not None and raw_hb.info["sfreq"] > resample_sfreq:
         raw_hb.resample(resample_sfreq, npad="auto")
 
-    # Pre-filter 质量评估
+    # Pre-filter quality assessment
     quality_pre, bad_pre = assess_hb_quality(raw_hb)
     bad_pre = expand_fnirs_bads_to_pairs(raw_hb, bad_pre)
     snr_pre = compute_hb_snr(raw_hb, signal_band=signal_band, noise_band=noise_band)
 
-    # Comprehensive 质量评估 (基于信号水平)
+    # Comprehensive quality assessment (based on signal level)
     comprehensive_quality_df = None
     comprehensive_bad_channels = []
     comprehensive_summary = {}
@@ -1685,13 +1685,13 @@ def process_one_snirf(
                 apply_hard_gating=True,
             )
         )
-        # 保存 comprehensive 详细结果（舍入到2位小数）
+        # Save comprehensive detailed results (rounded to 2 decimal places)
         round_dataframe(comprehensive_quality_df).to_csv(
             out_dir / f"{stem}_comprehensive_detail.csv",
             index=False,
             encoding="utf-8-sig",
         )
-        # 保存 comprehensive 汇总结果（舍入数值）
+        # Save comprehensive summary results (rounded values)
         rounded_summary = round_dict_values(comprehensive_summary, decimals=2)
         with open(
             out_dir / f"{stem}_comprehensive_summary.json", "w", encoding="utf-8"
@@ -1705,7 +1705,7 @@ def process_one_snirf(
         out_dir / f"{stem}_prefilter_detail.csv", index=False, encoding="utf-8-sig"
     )
 
-    # 滤波 + TDDR
+    # Filter + TDDR
     raw_proc = raw_hb.copy()
     raw_proc.info["bads"] = bad_pre.copy()
 
@@ -1718,7 +1718,7 @@ def process_one_snirf(
             raw_proc
         )
 
-    # Post-filter 质量评估
+    # Post-filter quality assessment
     quality_post, bad_post = assess_hb_quality(raw_proc)
     bad_post = expand_fnirs_bads_to_pairs(raw_proc, bad_post)
     snr_post = compute_hb_snr(raw_proc, signal_band=signal_band, noise_band=noise_band)
@@ -1771,9 +1771,9 @@ def process_one_snirf(
         "filter_method_used": filter_method_used,
     }
 
-    # 添加 Comprehensive 评估结果（如果启用）
+    # Add Comprehensive assessment results (if enabled)
     if comprehensive and comprehensive_summary:
-        # 对comprehensive_summary中的数值进行舍入
+        # Round values in comprehensive_summary
         rounded_comprehensive = round_dict_values(comprehensive_summary, decimals=2)
         summary.update(
             {
@@ -1809,82 +1809,82 @@ def process_one_snirf(
             }
         )
 
-    # 元数据写入（如果启用）
+    # Metadata writing (if enabled)
     metadata_written = False
     output_snirf_file = None
     report_csv_file = None
 
     if write_metadata:
-        # 确定坏通道（使用滤波后的坏通道列表）
+        # Determine bad channels (using post-filter bad channel list)
         bad_pre = summary.get("Pre-filter bad channels", "").split("; ")
         bad_post = summary.get("Post-filter bad channels", "").split("; ")
-        # 过滤空字符串
+        # Filter empty strings
         bad_pre = [ch for ch in bad_pre if ch]
         bad_post = [ch for ch in bad_post if ch]
 
-        # 使用滤波后的坏通道作为最终坏通道
+        # Use post-filter bad channels as final bad channels
         bad_channels = bad_post if len(bad_post) > 0 else bad_pre
 
-        # 计算通道分数（简化版本：好通道=1，坏通道=0）
+        # Calculate channel scores (simplified: good=1, bad=0)
         channel_scores = {}
         for ch in raw.ch_names:
             channel_scores[ch] = 0.0 if ch in bad_channels else 1.0
 
-        # 计算整体分数（好通道比例）
+        # Calculate overall score (good channel ratio)
         overall_score = (
             1.0 - (len(bad_channels) / len(raw.ch_names))
             if len(raw.ch_names) > 0
             else 0.0
         )
 
-        # 确定输出 SNIRF 文件路径
+        # Determine output SNIRF file path
         if output_snirf_path is None:
             output_snirf_file = out_dir / f"{stem}_processed.snirf"
         else:
             output_snirf_file = Path(output_snirf_path)
 
-        # 检查文件是否已存在
+        # Check if file already exists
         if output_snirf_file.exists() and not overwrite:
             raise FileExistsError(
                 f"输出文件已存在: {output_snirf_file}。使用 --overwrite 覆盖。"
             )
 
-        # 复制原始文件到输出路径（作为基础）
+        # Copy original file to output path (as base)
         import shutil
 
         shutil.copy(snirf_path, output_snirf_file)
 
-        # 尝试使用 mne_nirs 写入元数据，如果不可用则回退到 h5py
+        # Try to use mne_nirs to write metadata, fall back to h5py if not available
         try:
             import mne_nirs
             from mne_nirs.io import write_raw_snirf
 
-            # 创建一个带坏通道标记的 Raw 对象副本
+            # Create a copy of Raw object with bad channel markers
             raw_with_bads = raw.copy()
             raw_with_bads.info["bads"] = bad_channels.copy()
 
-            # 写入 SNIRF 文件，mne_nirs 会自动将坏通道信息写入 metaDataTags
+            # Write SNIRF file, mne_nirs will automatically write bad channel info to metaDataTags
             write_raw_snirf(raw_with_bads, output_snirf_file, overwrite=True)
 
-            # 使用 h5py 添加额外的元数据标签
+            # Use h5py to add additional metadata tags
             import h5py
 
             with h5py.File(output_snirf_file, "r+") as f:
                 if "nirs" in f and "metaDataTags" in f["nirs"]:
                     meta = f["nirs/metaDataTags"]
 
-                    # 写入坏通道列表（分号分隔）
+                    # Write bad channel list (semicolon separated)
                     bad_chs_str = "; ".join(bad_channels)
                     if "bad_chs" in meta:
                         del meta["bad_chs"]
                     meta.create_dataset("bad_chs", data=bad_chs_str)
 
-                    # 写入整体分数
+                    # Write overall score
                     if "overall_score" in meta:
                         del meta["overall_score"]
                     meta.create_dataset("overall_score", data=overall_score)
 
-                    # 写入通道分数 JSON
+                    # Write channel scores JSON
                     import json as json_module
 
                     channel_scores_json = json_module.dumps(channel_scores)
@@ -1892,7 +1892,7 @@ def process_one_snirf(
                         del meta["channel_scores_json"]
                     meta.create_dataset("channel_scores_json", data=channel_scores_json)
 
-                    # 添加处理参数和时间戳
+                    # Add processing parameters and timestamp
                     import datetime
 
                     now = datetime.datetime.now().isoformat()
@@ -1907,7 +1907,7 @@ def process_one_snirf(
             metadata_written = True
 
         except ImportError:
-            # mne_nirs 不可用，使用 h5py 直接写入
+            # mne_nirs not available, use h5py to write directly
             import h5py
             import json as json_module
             import datetime
@@ -1917,29 +1917,29 @@ def process_one_snirf(
                     raise RuntimeError("SNIRF 文件缺少 /nirs 组")
 
                 if "metaDataTags" not in f["nirs"]:
-                    # 创建 metaDataTags 组
+                    # Create metaDataTags group
                     meta = f["nirs"].create_group("metaDataTags")
                 else:
                     meta = f["nirs/metaDataTags"]
 
-                # 写入坏通道列表（分号分隔）
+                # Write bad channel list (semicolon separated)
                 bad_chs_str = "; ".join(bad_channels)
                 if "bad_chs" in meta:
                     del meta["bad_chs"]
                 meta.create_dataset("bad_chs", data=bad_chs_str)
 
-                # 写入整体分数
+                # Write overall score
                 if "overall_score" in meta:
                     del meta["overall_score"]
                 meta.create_dataset("overall_score", data=overall_score)
 
-                # 写入通道分数 JSON
+                # Write channel scores JSON
                 channel_scores_json = json_module.dumps(channel_scores)
                 if "channel_scores_json" in meta:
                     del meta["channel_scores_json"]
                 meta.create_dataset("channel_scores_json", data=channel_scores_json)
 
-                # 添加处理参数和时间戳
+                # Add processing parameters and timestamp
                 now = datetime.datetime.now().isoformat()
                 if "processing_date" in meta:
                     del meta["processing_date"]
@@ -1951,7 +1951,7 @@ def process_one_snirf(
 
             metadata_written = True
 
-        # 生成单行 CSV 报告（如果启用）
+        # Generate single-line CSV report (if enabled)
         if write_report_csv:
             report_csv_file = out_dir / f"{stem}_metadata_report.csv"
             report_data = {
@@ -1967,7 +1967,7 @@ def process_one_snirf(
             report_df = pd.DataFrame([report_data])
             report_df.to_csv(report_csv_file, index=False, encoding="utf-8-sig")
 
-        # 更新 summary 字典
+        # Update summary dictionary
         summary.update(
             {
                 "metadata_written": metadata_written,
@@ -1990,7 +1990,7 @@ def process_one_snirf(
 
 
 # =========================
-# 批处理函数
+# Batch processing function
 # =========================
 def batch_process_snirf_folder(
     in_dir: str | Path,
@@ -2083,7 +2083,7 @@ def batch_process_snirf_folder(
 
 
 # =========================
-# 元数据写入函数（根据 snirf_quality_pipeline.py）
+# Metadata writing function (based on snirf_quality_pipeline.py)
 # =========================
 
 
@@ -2096,7 +2096,7 @@ def process_one_snirf_with_metadata(
     apply_tddr: bool = True,
     signal_band: Tuple[float, float] = (0.01, 0.2),
     noise_band: Tuple[float, float] = (0.2, 0.5),
-    comprehensive: bool = True,  # 默认启用综合信号水平评估
+    comprehensive: bool = True,  # Enable comprehensive signal level assessment by default
     paradigm: str = "resting",
     events: Optional[Dict[str, Any]] = None,
     write_metadata: bool = True,
@@ -2136,7 +2136,7 @@ def process_one_snirf_with_metadata(
 
     stem = snirf_path.stem
 
-    # 1. 运行标准质量评估
+    # 1. Run standard quality assessment
     summary = process_one_snirf(
         snirf_path=snirf_path,
         out_dir=out_dir,
@@ -2151,77 +2151,77 @@ def process_one_snirf_with_metadata(
         events=events,
     )
 
-    # 2. 读取原始数据以获取坏通道信息
+    # 2. Read raw data to get bad channel info
     raw = mne.io.read_raw_snirf(str(snirf_path), preload=True, verbose=False)
 
-    # 确定坏通道（使用滤波后的坏通道列表）
+    # Determine bad channels (using post-filter bad channel list)
     bad_pre = summary.get("Pre-filter bad channels", "").split("; ")
     bad_post = summary.get("Post-filter bad channels", "").split("; ")
-    # 过滤空字符串
+    # Filter empty strings
     bad_pre = [ch for ch in bad_pre if ch]
     bad_post = [ch for ch in bad_post if ch]
 
-    # 使用滤波后的坏通道作为最终坏通道
+    # Use post-filter bad channels as final bad channels
     bad_channels = bad_post if len(bad_post) > 0 else bad_pre
 
-    # 3. 计算通道分数（简化版本：好通道=1，坏通道=0）
+    # 3. Calculate channel scores (simplified: good=1, bad=0)
     channel_scores = {}
     for ch in raw.ch_names:
         channel_scores[ch] = 0.0 if ch in bad_channels else 1.0
 
-    # 计算整体分数（好通道比例）
+    # Calculate overall score (good channel ratio)
     overall_score = (
         1.0 - (len(bad_channels) / len(raw.ch_names)) if len(raw.ch_names) > 0 else 0.0
     )
 
-    # 4. 如果需要，将元数据写入 SNIRF 文件
+    # 4. If needed, write metadata to SNIRF file
     metadata_written = False
     output_snirf_file = None
 
     if write_metadata:
-        # 确定输出 SNIRF 文件路径
+        # Determine output SNIRF file path
         if output_snirf_path is None:
             output_snirf_file = out_dir / f"{stem}_processed.snirf"
         else:
             output_snirf_file = Path(output_snirf_path)
 
-        # 检查文件是否已存在
+        # Check if file already exists
         if output_snirf_file.exists() and not overwrite:
             raise FileExistsError(
                 f"Output SNIRF file already exists: {output_snirf_file}. "
                 "Use overwrite=True to overwrite."
             )
 
-        # 将坏通道信息写入 MNE raw 对象
+        # Write bad channel info to MNE raw object
         raw.info["bads"] = bad_channels.copy()
 
-        # 尝试使用 mne_nirs 写入 SNIRF（如果可用）
+        # Try to use mne_nirs to write SNIRF (if available)
         if MNE_NIRS_AVAILABLE and write_raw_snirf is not None:
             write_raw_snirf(raw, str(output_snirf_file))
             metadata_written = True
         else:
-            # 如果 mne_nirs 不可用，使用 h5py 直接修改原文件或创建副本
-            # 确保输出文件存在且包含正确的 SNIRF 结构
+            # If mne_nirs not available, use h5py to directly modify original file or create copy
+            # Ensure output file exists and contains correct SNIRF structure
             import shutil
 
             if not output_snirf_file.exists():
-                # 文件不存在，从原始文件复制
+                # File does not exist, copy from original
                 shutil.copy2(snirf_path, output_snirf_file)
                 print(f"复制原始文件到: {output_snirf_file}")
             elif overwrite and output_snirf_file != snirf_path:
-                # 文件存在且允许覆盖，重新复制以确保正确的结构
+                # File exists and overwrite allowed, recopy to ensure correct structure
                 shutil.copy2(snirf_path, output_snirf_file)
                 print(f"覆盖文件并复制原始结构: {output_snirf_file}")
             elif not overwrite and output_snirf_file != snirf_path:
-                # 文件存在但不允许覆盖（这种情况应该已经被前面的检查捕获）
-                # 这里为了安全，仍然复制（实际上不会执行到这里）
+                # File exists but overwrite not allowed (this case should have been caught by previous checks)
+                # For safety, still copy here (actually won't execute)
                 shutil.copy2(snirf_path, output_snirf_file)
                 print(f"复制原始文件到现有位置: {output_snirf_file}")
 
-            # 使用 h5py 添加元数据标签
+            # Use h5py to add metadata tags
             try:
                 with h5py.File(output_snirf_file, "a") as f:
-                    # 确保 nirs/metaDataTags 组存在
+                    # Ensure nirs/metaDataTags group exists
                     if "nirs" not in f:
                         raise KeyError("SNIRF file missing 'nirs' group")
 
@@ -2231,24 +2231,24 @@ def process_one_snirf_with_metadata(
                     else:
                         meta_group = nirs_group["metaDataTags"]
 
-                    # 写入坏通道列表
+                    # Write bad channel list
                     if bad_channels:
                         meta_group["bad_chs"] = ";".join(bad_channels)
                     else:
                         meta_group["bad_chs"] = ""
 
-                    # 写入整体分数
+                    # Write overall score
                     meta_group["overall_score"] = str(overall_score)
 
-                    # 写入通道分数（JSON格式）
+                    # Write channel scores (JSON format)
                     meta_group["channel_scores_json"] = json.dumps(channel_scores)
 
-                    # 写入处理时间戳
+                    # Write processing timestamp
                     from datetime import datetime
 
                     meta_group["processing_timestamp"] = datetime.now().isoformat()
 
-                    # 写入处理参数摘要
+                    # Write processing parameters summary
                     meta_group["processing_params"] = json.dumps(
                         {
                             "l_freq": l_freq,
@@ -2265,12 +2265,12 @@ def process_one_snirf_with_metadata(
                 print(f"警告: 无法将元数据写入 SNIRF 文件: {e}")
                 metadata_written = False
 
-    # 5. 如果需要，生成单行 CSV 报告
+    # 5. If needed, generate single-line CSV report
     report_csv_path = None
     if write_report_csv:
         report_csv_path = out_dir / f"{stem}_report.csv"
 
-        # 准备报告数据
+        # Prepare report data
         report_data = {
             "file": snirf_path.name,
             "overall_score": overall_score,
@@ -2283,7 +2283,7 @@ def process_one_snirf_with_metadata(
             "output_snirf_file": str(output_snirf_file) if output_snirf_file else "",
         }
 
-        # 添加 summary 中的其他有用字段
+        # Add other useful fields from summary
         for key in [
             "n_hbo_channels",
             "n_hbr_channels",
@@ -2298,7 +2298,7 @@ def process_one_snirf_with_metadata(
         report_df = pd.DataFrame([report_data])
         report_df.to_csv(report_csv_path, index=False, encoding="utf-8-sig")
 
-    # 6. 更新 summary 字典
+    # 6. Update summary dictionary
     summary.update(
         {
             "metadata_written": metadata_written,
@@ -2314,7 +2314,7 @@ def process_one_snirf_with_metadata(
 
 
 # =========================
-# 批量处理函数（带元数据写入）
+# Batch processing function (with metadata writing)
 # =========================
 
 
@@ -2362,7 +2362,7 @@ def batch_process_snirf_folder_with_metadata(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     files = sorted(in_dir.glob("*.snirf"))
-    # 过滤隐藏文件（macOS ._ 文件）和系统文件
+    # Filter hidden files (macOS ._ files) and system files
     files = [
         f
         for f in files
@@ -2390,7 +2390,7 @@ def batch_process_snirf_folder_with_metadata(
                 paradigm=paradigm,
                 events=events,
                 write_metadata=write_metadata,
-                output_snirf_path=None,  # 自动生成
+                output_snirf_path=None,  # auto-generate
                 write_report_csv=write_report_csv,
                 overwrite=overwrite,
             )
@@ -2443,10 +2443,10 @@ def batch_compute_resting_metrics(
         temp_dir = output_dir / "temp_patched"
     temp_dir = Path(temp_dir)
 
-    # 查找所有.snirf文件
+    # Find all .snirf files
     snirf_files = sorted(input_dir.glob("*.snirf"))
 
-    # 过滤隐藏文件（macOS ._ 文件）和系统文件
+    # Filter hidden files (macOS ._ files) and system files
     snirf_files = [
         f
         for f in snirf_files
@@ -2458,23 +2458,23 @@ def batch_compute_resting_metrics(
 
     print(f"Found {len(snirf_files)} SNIRF files")
 
-    # 创建临时目录用于补丁文件
+    # Create temp directory for patch files
     temp_dir.mkdir(exist_ok=True)
 
-    # 辅助函数：清理数据以供JSON序列化
+    # Helper function: clean data for JSON serialization
     def _clean_for_json(obj):
         """递归清理对象，将NumPy类型转换为Python原生类型，NaN转换为None"""
         import numpy as np
 
         if isinstance(obj, (np.floating, float)):
-            # 检查是否为NaN或Inf
+            # Check if NaN or Inf
             if np.isnan(obj) or np.isinf(obj):
                 return None
             return float(obj)
         elif isinstance(obj, (np.integer, int)):
             return int(obj)
         elif isinstance(obj, np.ndarray):
-            # 递归处理数组元素
+            # Recursively process array elements
             return [_clean_for_json(item) for item in obj]
         elif isinstance(obj, dict):
             return {key: _clean_for_json(value) for key, value in obj.items()}
@@ -2483,22 +2483,22 @@ def batch_compute_resting_metrics(
         else:
             return obj
 
-    # 处理每个文件
+    # Process each file
     results = []
     failed = []
 
     for i, snirf_path in enumerate(snirf_files, 1):
         print(f"[{i}/{len(snirf_files)}] Processing: {snirf_path.name}")
 
-        # 使用之前脚本中的函数（需要导入它们）
-        # 这里简化：直接调用compute_resting_metrics_for_file
-        # 但为了保持模块完整性，我们重新实现逻辑
+        # Use functions from previous script (need to import them)
+        # Simplified here: directly call compute_resting_metrics_for_file
+        # But for module completeness, we reimplement the logic
 
         try:
-            # 加载SNIRF文件
+            # Load SNIRF file
             raw = mne.io.read_raw_snirf(str(snirf_path), preload=True, verbose=False)
         except Exception as e:
-            # 如果直接加载失败，尝试打补丁
+            # If direct load fails, try patching
             print(f"  Failed to load directly: {e}")
             try:
                 from ..fnirs.mne_patch import patch_snirf_for_mne
@@ -2525,7 +2525,7 @@ def batch_compute_resting_metrics(
                 continue
 
         try:
-            # 提取HbO/HbR数据
+            # Extract HbO/HbR data
             hbo_picks = mne.pick_types(raw.info, fnirs="hbo")
             hbr_picks = mne.pick_types(raw.info, fnirs="hbr")
 
@@ -2537,34 +2537,34 @@ def batch_compute_resting_metrics(
             data = raw.get_data()
             fs = raw.info["sfreq"]
 
-            # 确保通道数量匹配
+            # Ensure channel count matches
             min_channels = min(len(hbo_picks), len(hbr_picks))
             hbo_data = data[hbo_picks[:min_channels], :]
             hbr_data = data[hbr_picks[:min_channels], :]
 
-            # 计算静息态指标
+            # Calculate resting-state metrics
             resting_metrics = compute_resting_metrics(
                 hbo_data, hbr_data, fs, bad_channels=None, bad_segments=None
             )
 
-            # 执行综合质量评估以获取通道级别信息
+            # Execute comprehensive quality assessment to get channel-level info
             quality_df, bad_channels, quality_summary = assess_hb_quality_comprehensive(
                 raw=raw, fs=fs, paradigm="resting", apply_hard_gating=True
             )
 
-            # 获取通道配对信息
+            # Get channel pair info
             pairs = pair_hbo_hbr_channels(raw)
 
-            # 分析配对通道质量
-            # 首先，创建通道名到质量状态的映射
+            # Analyze pair channel quality
+            # First, create channel name to quality status mapping
             channel_bad_status = {}
             for _, row in quality_df.iterrows():
                 channel_bad_status[row["channel"]] = row.get("bad_final", False)
 
-            # 分析配对通道
-            possible_bad_pairs = []  # hbo和hbr都是坏的配对
-            all_good_pairs = []  # hbo和hbr都是好的配对
-            pair_scores = {}  # 配对得分（用于选择最好的）
+            # Analyze pair channels
+            possible_bad_pairs = []  # pairs where both hbo and hbr are bad
+            all_good_pairs = []  # pairs where both hbo and hbr are good
+            pair_scores = {}  # pair scores (for selecting best)
 
             for base_name, idx_hbo, idx_hbr in pairs:
                 if idx_hbo < len(quality_df) and idx_hbr < len(quality_df):
@@ -2574,16 +2574,16 @@ def batch_compute_resting_metrics(
                     hbo_bad = channel_bad_status.get(hbo_ch_name, True)
                     hbr_bad = channel_bad_status.get(hbr_ch_name, True)
 
-                    # 如果两个通道都是坏的
+                    # If both channels are bad
                     if hbo_bad and hbr_bad:
                         possible_bad_pairs.append(base_name)
 
-                    # 如果两个通道都是好的
+                    # If both channels are good
                     if not hbo_bad and not hbr_bad:
                         all_good_pairs.append(base_name)
 
-                        # 计算配对得分（使用综合分数，如果没有则使用可靠性）
-                        # 这里简化：使用两个通道的平均TSNR作为得分
+                        # Calculate pair score (use comprehensive score, or reliability if not available)
+                        # Simplified here: use average TSNR of both channels as score
                         hbo_tsnr = quality_df.iloc[idx_hbo].get("tsnr", 0)
                         hbr_tsnr = quality_df.iloc[idx_hbr].get("tsnr", 0)
                         pair_score = (
@@ -2593,42 +2593,42 @@ def batch_compute_resting_metrics(
                         )
                         pair_scores[base_name] = pair_score
 
-            # 选择最好的5%通道对
+            # Select best 5% channel pairs
             best_channels = []
             if all_good_pairs and pair_scores:
-                # 按得分排序
+                # Sort by score
                 sorted_pairs = sorted(
                     pair_scores.items(), key=lambda x: x[1], reverse=True
                 )
-                # 取前5%
+                # Take top 5%
                 n_best = max(1, int(len(sorted_pairs) * 0.05))
                 best_channels = [pair[0] for pair in sorted_pairs[:n_best]]
 
-            # 计算n_possible_bad_sequence（这里简化为不良配对数量）
+            # Calculate n_possible_bad_sequence (simplified here to bad pair count)
             n_possible_bad_sequence = len(possible_bad_pairs)
 
-            # 准备结果 - 根据用户要求调整列
+            # Prepare results - adjust columns as per user request
             result = {
                 "file_name": snirf_path.name,
-                "file_path": str(snirf_path),  # 将被删除
+                "file_path": str(snirf_path),  # will be deleted
                 "n_channels_hbo": hbo_data.shape[0],
                 "n_channels_hbr": hbr_data.shape[0],
-                "n_timepoints": hbo_data.shape[1],  # 将被删除
-                "sampling_freq": fs,  # 将被删除
+                "n_timepoints": hbo_data.shape[1],  # will be deleted
+                "sampling_freq": fs,  # will be deleted
                 "duration_seconds": hbo_data.shape[1] / fs if fs > 0 else 0,
-                # 静息态指标
+                # Resting-state metrics
                 **resting_metrics,
-                # 新增列
+                # New columns
                 "n_possible_bad_sequence": n_possible_bad_sequence,
                 "possible_bad_sequence": "; ".join(possible_bad_pairs)
                 if possible_bad_pairs
                 else "",
                 "possible_bad_channels": (
                     "; ".join(possible_bad_pairs) if possible_bad_pairs else ""
-                ),  # 与possible_bad_sequence相同
+                ),  # same as possible_bad_sequence
                 "best_channels": "; ".join(best_channels) if best_channels else "",
-                # 保留duration_seconds，但用户没有说要删除它
-                # 新增：详细通道级指标
+                # Keep duration_seconds, but user did not say to delete it
+                # New: detailed channel-level metrics
                 "channel_metrics": quality_df.replace({np.nan: None}).to_dict(
                     "records"
                 ),
@@ -2636,8 +2636,8 @@ def batch_compute_resting_metrics(
                 "bad_channels": bad_channels,
             }
 
-            # 注意：在最终输出前，我们会删除不需要的列
-            # 这里先收集所有数据，在保存CSV时再过滤
+            # Note: before final output, we will delete unneeded columns
+            # Here we first collect all data, filter when saving CSV
 
             results.append(result)
             print(
@@ -2655,7 +2655,7 @@ def batch_compute_resting_metrics(
                 }
             )
 
-    # 清理临时目录
+    # Clean up temp directory
     if temp_dir.exists():
         try:
             for f in temp_dir.glob("*"):
@@ -2664,29 +2664,29 @@ def batch_compute_resting_metrics(
         except Exception as e:
             print(f"Warning: Failed to clean temp directory {temp_dir}: {e}")
 
-    # 保存结果
+    # Save results
     if results:
-        # 保存为JSON文件（每个文件一个）
+        # Save as JSON file (one per file)
         for result in results:
             file_name = result["file_name"]
             json_path = output_dir / f"{Path(file_name).stem}_resting_metrics.json"
-            # 清理数据以供JSON序列化
+            # Clean data for JSON serialization
             cleaned_result = _clean_for_json(result)
             rounded_result = round_dict_values(cleaned_result, decimals=2)
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(rounded_result, f, ensure_ascii=False, indent=2)
 
-        # 保存为汇总CSV文件
+        # Save as summary CSV file
         df = pd.DataFrame(results)
 
-        # 根据用户要求删除不需要的列
+        # Delete unneeded columns as per user request
         columns_to_drop = [
             "file_path",
             "n_timepoints",
             "sampling_freq",
             "retained_duration_fraction",
         ]
-        # 同时删除嵌套数据结构列（这些只应在JSON中保留）
+        # Also delete nested data structure columns (these should only be in JSON)
         nested_columns_to_drop = ["channel_metrics", "quality_summary", "bad_channels"]
         columns_to_drop.extend(nested_columns_to_drop)
         columns_to_keep = [col for col in df.columns if col not in columns_to_drop]
@@ -2703,7 +2703,7 @@ def batch_compute_resting_metrics(
         for f in failed:
             print(f"  {f['file_name']}: {f['error']}")
 
-        # 保存失败文件列表
+        # Save failed files list
         failed_df = pd.DataFrame(failed)
         failed_csv_path = output_dir / "failed_files.csv"
         failed_df.to_csv(failed_csv_path, index=False, encoding="utf-8-sig")

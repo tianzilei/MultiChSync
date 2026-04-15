@@ -177,6 +177,89 @@ multichsync quality assess \
   --verbose                 # Detailed progress output
 ```
 
+### 6. Generate Visualization Charts
+
+After running quality assessment, you can generate visualization charts to better understand the results:
+
+```bash
+# Generate visualizations for a single file
+multichsync quality visualize \
+  --input Data/convert/fnirs/sub-001.snirf \
+  --output-dir Data/quality
+
+# Batch generate visualizations for multiple files
+multichsync quality visualize-batch \
+  --input-dir Data/convert/fnirs \
+  --output-dir Data/quality
+
+# Generate only specific charts
+multichsync quality visualize \
+  --input Data/convert/fnirs/sub-001.snirf \
+  --no-snr                    # Skip SNR histogram
+  --no-correlation            # Skip HbO-HbR correlation plot
+
+# Adjust DPI for higher resolution
+multichsync quality visualize \
+  --input Data/convert/fnirs/sub-001.snirf \
+  --dpi 300
+```
+
+**Visualization Outputs:**
+
+- **Channel Quality Heatmap** (`*_channel_quality_heatmap.png`): Shows quality scores (0-1) per channel with color gradient
+  - Green = good channels (quality score = 1.0)
+  - Yellow = moderate quality
+  - Red = bad channels (quality score = 0.0)
+
+- **SNR Distribution** (`*_snr_distribution.png`): Histogram of tSNR values with threshold line at tSNR=1.0
+  - Displays statistics: mean, median, std
+  - Useful for identifying channels with异常低 SNR
+
+- **HbO-HbR Correlation Plot** (`*_hbo_hbr_correlation.png`): Scatter plot of HbO vs HbR standard deviation
+  - Color indicates correlation coefficient per channel pair
+  - Shows regression line and overall correlation coefficient
+  - Dashed line is y=x reference line
+  - Abnormal correlation values (> 0 or < -0.95) trigger warnings
+
+##### Python API Visualization
+
+```python
+from multichsync.quality import (
+    generate_channel_quality_heatmap,
+    generate_snr_distribution_histogram,
+    generate_hbo_hbr_correlation_plot,
+    generate_all_visualizations
+)
+
+# Generate individual visualizations
+generate_channel_quality_heatmap(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_channel_quality_heatmap.png",
+    comprehensive_detail_path="Data/quality/sub-001_comprehensive_detail.csv"
+)
+
+generate_snr_distribution_histogram(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_snr_distribution.png"
+)
+
+generate_hbo_hbr_correlation_plot(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_hbo_hbr_correlation.png"
+)
+
+# Generate all visualizations at once
+results = generate_all_visualizations(
+    input_snirf_path="Data/convert/fnirs/sub-001.snirf",
+    output_dir="Data/quality"
+)
+
+print(results)
+# {'heatmap': PosixPath('.../_channel_quality_heatmap.png'),
+#  'snr_distribution': PosixPath('.../_snr_distribution.png'),
+#  'correlation': PosixPath('.../_hbo_hbr_correlation.png')}
+```
+
 ## Python API Usage
 
 ### Import Structure

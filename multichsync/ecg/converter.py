@@ -38,15 +38,15 @@ def convert_acq_to_csv(acq_path: str,
         如果group_by_type为False，返回单个文件路径
         如果group_by_type为True，返回文件路径字典
     """
-    # 解析ACQ文件
+    # Parse ACQ file
     parsed = parse_acq_file(acq_path, sampling_rate)
     data = parsed['data']
     channels = parsed['channels']
     
-    # 获取基础文件名
+    # Get base filename
     base_filename = Path(acq_path).stem
     
-    # 处理输出路径
+    # Handle output path
     if output_path is None:
         output_dir = Path(acq_path).parent / "convert"
         os.makedirs(output_dir, exist_ok=True)
@@ -55,32 +55,32 @@ def convert_acq_to_csv(acq_path: str,
         else:
             output_path = str(output_dir / f"{base_filename}.csv")
     
-    # 分组输出
+    # Group output
     if group_by_type:
-        # 按通道类型分组
+        # Group by channel type
         grouped = group_channels_by_type(channels)
         
-        # 对于分组输出，output_path应该是目录路径
-        # 确保目录存在
+        # For group output, output_path should be directory path
+        # Ensure directory exists
         os.makedirs(output_path, exist_ok=True)
         output_dir = output_path
         
-        # 写入分组文件
+        # Write grouped files
         output_files = write_grouped_csv(
             data, output_dir, base_filename, grouped, float_format
         )
         
         return output_files
     else:
-        # 单个文件输出
-        # 如果output_path是目录，则创建文件名
+        # Single file output
+        # If output_path is directory, create filename
         if os.path.isdir(output_path):
             output_path = os.path.join(output_path, f"{base_filename}.csv")
         else:
-            # 确保输出文件的父目录存在
+            # Ensure parent directory of output file exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
-        # 写入CSV
+        # Write CSV
         result_path = write_ecg_csv(data, output_path, float_format=float_format)
         
         return result_path

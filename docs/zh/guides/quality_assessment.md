@@ -200,17 +200,97 @@ Bad channels (3):
 
 #### 3.3 可视化
 
-通道质量热图(*_channel_quality_heatmap.png):
+质量评估模块支持生成三种可视化图表，帮助用户直观理解信号质量评估结果。
+
+##### 生成可视化图表
+
+```bash
+# 单文件可视化
+multichsync quality visualize \
+  --input Data/convert/fnirs/sub-001.snirf \
+  --output-dir Data/quality
+
+# 批量可视化（先生成质量评估数据）
+multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
+multichsync quality visualize-batch \
+  --input-dir Data/convert/fnirs \
+  --output-dir Data/quality
+
+# 可选：只生成特定图表
+multichsync quality visualize \
+  --input Data/convert/fnirs/sub-001.snirf \
+  --output-dir Data/quality \
+  --no-heatmap  # 只生成 SNR 和相关性图
+```
+
+选项:
+- --input: 输入 SNIRF 文件路径（必需）
+- --output-dir: 输出目录路径（默认：与输入文件相同目录）
+- --no-heatmap: 不生成通道质量热图
+- --no-snr: 不生成信噪比分布图
+- --no-correlation: 不生成 HbO-HbR 相关性图
+- --dpi: 图像分辨率（默认：150）
+
+##### 生成的可视化图表
+
+**通道质量热图** (*_channel_quality_heatmap.png):
 - 展示所有通道的总体质量评分
-- 使用颜色编码: 绿色(好) -> 黄色(一般) -> 红色(差)
+- 使用颜色编码: 绿色(好) → 黄色(一般) → 红色(差)
+- 每个通道一行，显示通道名称和质量分数
+- 好通道(质量分数=1.0)显示为绿色
+- 坏通道(质量分数=0.0)显示为红色
 
-信噪比分布(*_snr_distribution.png):
+**信噪比分布** (*_snr_distribution.png):
 - 显示 tSNR 值的直方图分布
-- 标注阈值线
+- 红色虚线标注默认阈值线(tSNR=1.0)
+- 显示统计信息：均值、中位数、标准差
+- 可用于识别异常低 SNR 的通道
 
-HbO-HbR 相关性图(*_hbr_hbo_correlation.png):
-- HbO vs HbR 散点图
-- 显示相关系数和回归线
+**HbO-HbR 相关性图** (*_hbo_hbr_correlation.png):
+- HbO vs HbR 通道标准差散点图
+- 颜色表示通道对的相关系数
+- 显示回归线和整体相关系数
+- 虚线为 y=x 参考线
+- 异常的相关性值(> 0 或 < -0.95)会触发警告
+
+##### Python API 可视化
+
+```python
+from multichsync.quality import (
+    generate_channel_quality_heatmap,
+    generate_snr_distribution_histogram,
+    generate_hbo_hbr_correlation_plot,
+    generate_all_visualizations
+)
+
+# 生成单个可视化
+generate_channel_quality_heatmap(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_channel_quality_heatmap.png",
+    comprehensive_detail_path="Data/quality/sub-001_comprehensive_detail.csv"
+)
+
+generate_snr_distribution_histogram(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_snr_distribution.png"
+)
+
+generate_hbo_hbr_correlation_plot(
+    quality_detail_path="Data/quality/sub-001_postfilter_detail.csv",
+    output_path="Data/quality/sub-001_hbo_hbr_correlation.png"
+)
+
+# 一次性生成所有可视化
+results = generate_all_visualizations(
+    input_snirf_path="Data/convert/fnirs/sub-001.snirf",
+    output_dir="Data/quality"
+)
+
+print(results)
+# {'heatmap': PosixPath('.../_channel_quality_heatmap.png'),
+#  'snr_distribution': PosixPath('.../_snr_distribution.png'),
+#  'correlation': PosixPath('.../_hbo_hbr_correlation.png')}
+```
 
 ## Python API 用法
 

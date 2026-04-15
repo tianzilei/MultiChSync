@@ -914,7 +914,7 @@ def extract_marker_info(
 
             if duration_info:
                 sequence_duration = duration_info["duration"]
-                # 保留2位小数
+                # Keep 2 decimal places
                 if sequence_duration is not None:
                     sequence_duration = round(sequence_duration, 2)
                 data_file_name = duration_info["data_file"]

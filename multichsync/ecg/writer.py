@@ -34,12 +34,12 @@ def write_ecg_csv(
     str
         输出文件路径
     """
-    # 确保输出目录存在
+    # Ensure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # 选择通道
+    # Select channels
     if channels is not None:
-        # 只保留存在的通道
+        # Only keep existing channels
         available_channels = [ch for ch in channels if ch in data.columns]
         if not available_channels:
             raise ValueError("指定的通道在数据中不存在")
@@ -47,7 +47,7 @@ def write_ecg_csv(
     else:
         data_to_write = data.copy()
 
-    # 写入CSV
+    # Write CSV
     data_to_write.to_csv(
         output_path, index=False, encoding="utf-8-sig", float_format=float_format
     )
@@ -91,26 +91,26 @@ def write_grouped_csv(
         if not channels:
             continue
 
-        # 只保留存在的通道
+        # Only keep existing channels
         available_channels = [ch for ch in channels if ch in data.columns]
         if not available_channels:
             continue
 
-        # 提取分组数据
+        # Extract grouped data
         group_data = data[available_channels].copy()
 
-        # 生成输出文件名
-        # 例如: sub-060_ses-01_task-rest_ecg.csv, sub-060_ses-01_task-rest_input.csv
-        # - 'ecg' 分组：去掉后缀 '_ecg'，避免重复（如 ecg_ecg）
-        # - 'input' 分组：去掉 base_filename 末尾的 '_ecg' 或 'ecg'，避免出现 ecg_input
+        # Generate output filename
+        # Example: sub-060_ses-01_task-rest_ecg.csv, sub-060_ses-01_task-rest_input.csv
+        # - 'ecg' group: remove suffix '_ecg', avoid duplication (e.g., ecg_ecg)
+        # - 'input' group: remove '_ecg' or 'ecg' from end of base_filename, avoid ecg_input
         if group_name == "ecg":
             output_filename = f"{base_filename}.csv"
         elif group_name == "input":
-            # 去掉 base_filename 末尾的 _ecg 或 ecg
+            # Remove _ecg or ecg from end of base_filename
             if base_filename.endswith("_ecg"):
-                base_for_input = base_filename[:-4]  # 去掉 "_ecg"
+                base_for_input = base_filename[:-4]  # remove "_ecg"
             elif base_filename.endswith("ecg"):
-                base_for_input = base_filename[:-3]  # 去掉 "ecg"
+                base_for_input = base_filename[:-3]  # remove "ecg"
             else:
                 base_for_input = base_filename
             output_filename = f"{base_for_input}_input.csv"
@@ -118,7 +118,7 @@ def write_grouped_csv(
             output_filename = f"{base_filename}_{group_name}.csv"
         output_path = os.path.join(output_dir, output_filename)
 
-        # 写入CSV
+        # Write CSV
         write_ecg_csv(group_data, output_path, float_format=float_format)
 
         output_files[group_name] = output_path

@@ -47,8 +47,8 @@ multichsync ecg batch --input-dir Data/raw/ECG \
 # Extract markers from all modalities
 multichsync marker batch --types fnirs,ecg,eeg
 
-# Clean markers (remove duplicates, filter quality)
-multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0
+# Clean markers (remove duplicates, filter quality, remove start marker at t=0)
+multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0 --remove-start
 
 # Generate subject-level reports
 multichsync marker info --input-dir Data/marker --output-dir Data/marker/info

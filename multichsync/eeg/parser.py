@@ -37,18 +37,18 @@ def guess_input_format(file_path: Union[str, Path]) -> str:
     path = Path(file_path)
     suffix = path.suffix.lower()
     
-    # EEGLAB格式
+    # EEGLAB format
     if suffix == ".set":
         return "eeglab"
     
-    # Curry格式扩展名
+    # Curry format extensions
     curry_suffixes = {
         ".cdt", ".dap", ".dat", ".rs3", ".cef", ".cdt.dpa"
     }
     if suffix in curry_suffixes:
         return "curry"
     
-    # 尝试通过文件存在性判断（EEGLAB的.set文件通常有对应的.fdt文件）
+    # Try to determine by file existence (EEGLAB .set files usually have corresponding .fdt files)
     if suffix == ".fdt":
         set_file = path.with_suffix(".set")
         if set_file.exists():
@@ -89,18 +89,18 @@ def read_eeg_file(file_path: Union[str, Path],
     if not file_path.exists():
         raise FileNotFoundError(f"EEG文件不存在: {file_path}")
     
-    # 猜测输入格式
+    # Guess input format
     input_format = guess_input_format(file_path)
     
-    # 读取文件
+    # Read file
     if input_format == "eeglab":
-        # EEGLAB格式可能有单独的.fdt数据文件
+        # EEGLAB format may have separate .fdt data file
         raw = mne.io.read_raw_eeglab(file_path, preload=preload, verbose=verbose)
     else:
-        # Curry格式
+        # Curry format
         raw = mne.io.read_raw_curry(file_path, preload=preload, verbose=verbose)
     
-    # 提取元数据
+    # Extract metadata
     metadata = {
         'filename': file_path.name,
         'file_size': file_path.stat().st_size,
@@ -111,7 +111,7 @@ def read_eeg_file(file_path: Union[str, Path],
         'duration': raw.times[-1] if len(raw.times) > 0 else 0,
     }
     
-    # 通道信息
+    # Channel information
     channels = []
     for i, ch_name in enumerate(raw.ch_names):
         ch_info = {
@@ -147,7 +147,7 @@ def get_file_info(file_path: Union[str, Path]) -> Dict:
         文件信息字典
     """
     try:
-        # 尝试快速读取而不预加载数据
+        # Try quick read without preloading data
         parsed = read_eeg_file(file_path, preload=False, verbose=False)
         return {
             'format': parsed['format'],
@@ -155,7 +155,7 @@ def get_file_info(file_path: Union[str, Path]) -> Dict:
             'channels': parsed['channels']
         }
     except Exception as e:
-        # 如果读取失败，返回基本信息
+        # If read fails, return basic info
         path = Path(file_path)
         return {
             'format': guess_input_format(file_path) if path.exists() else 'unknown',

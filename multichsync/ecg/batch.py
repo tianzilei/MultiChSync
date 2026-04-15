@@ -36,7 +36,7 @@ def batch_convert_acq_to_csv(input_dir: str,
     list
         转换结果列表，每个元素为文件路径或路径字典
     """
-    # 处理输出目录
+    # Handle output directory
     if output_dir is None:
         output_dir = str(Path(input_dir).parent / "convert")
     
@@ -44,7 +44,7 @@ def batch_convert_acq_to_csv(input_dir: str,
     
     converted_files = []
     
-    # 遍历输入目录
+    # Iterate input directory
     for filename in os.listdir(input_dir):
         # Skip hidden files (macOS ._ files) and system files
         if filename.startswith('.') or filename == '__MACOSX':
@@ -53,16 +53,16 @@ def batch_convert_acq_to_csv(input_dir: str,
             acq_path = os.path.join(input_dir, filename)
             
             try:
-                # 构建输出路径
+                # Build output path
                 base_name = Path(filename).stem
                 if group_by_type:
-                    # 分组输出到输出目录（不创建子目录）
+                    # Group output to output directory (no subdirectory)
                     result = convert_acq_to_csv(
                         acq_path, output_dir, sampling_rate, 
                         group_by_type, float_format
                     )
                 else:
-                    # 单个文件输出
+                    # Single file output
                     output_path = os.path.join(output_dir, f"{base_name}.csv")
                     result = convert_acq_to_csv(
                         acq_path, output_path, sampling_rate, 

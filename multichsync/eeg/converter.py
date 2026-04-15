@@ -10,7 +10,7 @@ from typing import Optional, Union, Literal, Dict, Tuple
 from .parser import read_eeg_file
 from .writer import write_eeg_file, write_eeg_to_brainvision, write_eeg_to_eeglab, write_eeg_to_edf
 
-# 导出格式类型
+# Export format types
 ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
 
 
@@ -45,17 +45,17 @@ def convert_eeg_format(file_path: Union[str, Path],
     """
     file_path = Path(file_path)
     
-    # 读取EEG文件
+    # Read EEG file
     parsed = read_eeg_file(file_path, preload=preload, verbose=verbose)
     raw = parsed['raw']
     
-    # 确定输出路径
+    # Determine output path
     if output_path is None:
-        # 默认输出到输入文件所在目录的convert子目录
+        # Default output to convert subdirectory of input file directory
         output_dir = file_path.parent / "convert"
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 根据导出格式确定扩展名
+        # Determine extension based on export format
         if export_format == "BrainVision":
             ext = ".vhdr"
         elif export_format == "EEGLAB":
@@ -68,10 +68,10 @@ def convert_eeg_format(file_path: Union[str, Path],
         output_path = output_dir / (file_path.stem + ext)
     else:
         output_path = Path(output_path)
-        # 确保输出目录存在
+        # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # 写入文件
+    # Write file
     output_file = write_eeg_file(
         raw=raw,
         output_path=output_path,
@@ -220,7 +220,7 @@ def convert_eeg_to_format(file_path: Union[str, Path],
     tuple
         (raw对象, 输出文件路径)
     """
-    # 验证输出格式
+    # Validate output format
     valid_formats = ["BrainVision", "EEGLAB", "EDF"]
     if output_format not in valid_formats:
         raise ValueError(f"不支持的输出格式: {output_format}，支持格式: {valid_formats}")

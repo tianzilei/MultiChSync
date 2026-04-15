@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 
-# 数据文件路径映射表
+# Data file path mapping table
 DATA_PATH_MAP = {
     "ecg": "Data/convert/ECG",
     "eeg": "Data/convert/EEG",
@@ -40,41 +40,41 @@ def find_raw_data_file(device_name: str, device_type: str) -> Optional[Path]:
     base_dir = Path("Data")
 
     if device_type == "ecg":
-        # ECG: 设备名称可能使用 _input 后缀（marker文件名），需要映射到 _ecg（数据文件名）
-        # 例如：sub-071_ses-01_task-rest_input -> sub-071_ses-01_task-rest_ecg.csv
+        # ECG: Device name may use _input suffix (marker filename), need to map to _ecg (data filename)
+        # Example: sub-071_ses-01_task-rest_input -> sub-071_ses-01_task-rest_ecg.csv
         search_name = device_name
         if "_input" in device_name.lower():
-            # 将 _input 后缀替换为 _ecg
+            # Replace _input suffix with _ecg
             search_name = device_name.replace("_input", "_ecg")
 
         ecg_dir = base_dir / "convert" / "ECG"
         if ecg_dir.exists():
-            # 首先尝试精确匹配（替换后的名称）
+            # First try exact match (replaced name)
             for f in ecg_dir.glob(f"{search_name}_ecg.csv"):
                 if f.exists():
                     return f
-            # 然后尝试模糊匹配（设备名在文件名中）
+            # Then try fuzzy match (device name in filename)
             for f in ecg_dir.glob("*_ecg.csv"):
                 if search_name in f.stem or device_name in f.stem:
                     return f
-        # 备选：直接在marker路径中查找
+        # Alternative: directly find in marker path
         marker_file = base_dir / "marker" / "ecg" / f"{device_name}_marker.csv"
         if marker_file.exists():
-            # 从marker文件反推原始ecg数据
+            # Derive original ecg data from marker file
             ecg_dir = base_dir / "convert" / "ECG"
             if ecg_dir.exists():
                 for f in ecg_dir.glob(f"{search_name}*_ecg.csv"):
                     return f
 
     elif device_type == "eeg":
-        # EEG: 查找 .vhdr 文件（BrainVision格式）
+        # EEG: Find .vhdr files (BrainVision format)
         eeg_dir = base_dir / "convert" / "EEG"
         if eeg_dir.exists():
             for f in eeg_dir.glob(f"{device_name}.vhdr"):
                 return f
 
     elif device_type == "fnirs":
-        # fNIRS: 查找 .snirf 文件
+        # fNIRS: Find .snirf files
         fnirs_dir = base_dir / "convert" / "fnirs"
         if fnirs_dir.exists():
             for f in fnirs_dir.glob(f"{device_name}.snirf"):
@@ -185,46 +185,46 @@ def crop_eeg_data(
     device_offset: float = 0.0,
 ) -> Dict:
     """裁剪EEG数据（BrainVision格式）"""
-    # 读取原始数据
+    # Read raw data
     raw = mne.io.read_raw_brainvision(input_file, preload=True, verbose=False)
 
-    # 计算实际裁剪范围
+    # Calculate actual crop range
     sfreq = raw.info["sfreq"]
     actual_start = start_time - device_offset
     actual_end = end_time - device_offset
 
-    # 转换为采样点
+    # Convert to sample points
     start_sample = max(0, int(actual_start * sfreq))
     end_sample = min(raw.n_times, int(actual_end * sfreq))
 
-    # 确保有效范围
+    # Ensure valid range
     if start_sample >= end_sample:
         raise ValueError(f"无效的裁剪范围: start={start_sample}, end={end_sample}")
 
-    # 裁剪数据
+    # Crop data
     cropped_data = raw.get_data()[:, start_sample:end_sample]
 
-    # 创建新的info对象并设置正确的times
+    # Create new info object and set correct times
     info = raw.info.copy()
     if info.get("meas_date") is not None:
         info.set_meas_date(None)
 
-    # 创建新的Raw对象 - 使用从0开始的时间（通过first_samp参数）
+    # Create new Raw object - use time starting from 0 (via first_samp parameter)
     cropped_times = np.arange(cropped_data.shape[1]) / sfreq
     first_samp_offset = int(cropped_times[0] * sfreq) if len(cropped_times) > 0 else 0
     cropped_raw = mne.io.RawArray(
         cropped_data, info, first_samp=first_samp_offset, verbose=False
     )
 
-    # 保存到输出目录（需要所有3个文件）
+    # Save to output directory (need all 3 files)
     output_dir.mkdir(parents=True, exist_ok=True)
     base_name = input_file.stem
 
-    # 使用MNE导出
+    # Use MNE export
     output_path = output_dir / f"{base_name}.vhdr"
     cropped_raw.export(output_path, overwrite=True)
 
-    # 同时复制 .vmrk 和 .eeg 文件（如果存在）
+    # Also copy .vmrk and .eeg files (if exist)
     for ext in [".vmrk", ".eeg"]:
         src = input_file.parent / f"{base_name}{ext}"
         if src.exists():
@@ -248,21 +248,21 @@ def crop_fnirs_data(
     device_offset: float = 0.0,
 ) -> Dict:
     """裁剪fNIRS数据（SNIRF格式）"""
-    # 使用h5py直接操作SNIRF文件
+    # Use h5py to directly manipulate SNIRF file
     actual_start = start_time - device_offset
     actual_end = end_time - device_offset
 
-    # 读取原始数据
+    # Read raw data
     with h5py.File(input_file, "r") as f:
-        # 获取时间数据 - SNIRF格式使用 nirs/data1/time
+        # Get time data - SNIRF format uses nirs/data1/time
         time_key = "nirs/data1/time"
         if time_key in f:
             times = f[time_key][:]
-            # 确保是一维数组
+            # Ensure is 1D array
             if times.ndim > 1:
                 times = times.flatten()
         else:
-            # 尝试其他可能的键
+            # Try other possible keys
             for key in f.keys():
                 if isinstance(f[key], h5py.Dataset) and "time" in key.lower():
                     times = f[key][:]
@@ -272,26 +272,26 @@ def crop_fnirs_data(
             else:
                 raise ValueError("无法在SNIRF文件中找到时间数据")
 
-        # 找到需要保留的索引
+        # Find indices to keep
         start_idx = max(0, np.searchsorted(times, actual_start))
         end_idx = min(len(times), np.searchsorted(times, actual_end))
 
-        # 确保有效范围（如果请求的范围超出数据范围，使用整个数据）
+        # Ensure valid range (if requested range exceeds data range, use entire data)
         if start_idx >= end_idx:
-            # 如果请求的时间范围超出数据范围，使用整个数据集
+            # If requested time range exceeds data range, use entire dataset
             start_idx = 0
             end_idx = len(times)
             print(f"    警告: 请求的时间范围超出数据范围，使用整个数据集")
 
-        # 读取数据
+        # Read data
         data_key = "nirs/data1/dataTimeSeries"
         if data_key in f:
             data = f[data_key][:]
-            # 确保是2D数组 (samples x channels)
+            # Ensure is 2D array (samples x channels)
             if data.ndim == 1:
                 data = data.reshape(-1, 1)
         else:
-            # 尝试其他可能的键
+            # Try other possible keys
             for key in f.keys():
                 if isinstance(f[key], h5py.Dataset) and "data" in key.lower():
                     data = f[key][:]
@@ -301,13 +301,13 @@ def crop_fnirs_data(
             else:
                 raise ValueError("无法在SNIRF文件中找到数据")
 
-        # 裁剪数据 - 确保索引有效
+        # Crop data - ensure indices valid
         if start_idx < len(times) and end_idx <= data.shape[0]:
             cropped_times = times[start_idx:end_idx]
             data = data[start_idx:end_idx, :]
         else:
             cropped_times = times
-            # 如果索引超出范围，使用整个数据
+            # If indices out of range, use entire data
             if start_idx >= len(times):
                 start_idx = 0
             if end_idx > data.shape[0]:
@@ -315,25 +315,25 @@ def crop_fnirs_data(
             cropped_times = times[start_idx:end_idx]
             data = data[start_idx:end_idx, :]
 
-        # 调整时间
+        # Adjust time
         cropped_times = cropped_times - cropped_times[0]
 
-    # 创建新的SNIRF文件 - 使用 shutil 复制整个文件，然后修改数据
+    # Create new SNIRF file - use shutil to copy entire file, then modify data
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # 先复制整个文件
+    # First copy entire file
     import shutil as shutil_module
 
     shutil_module.copy2(input_file, output_file)
 
-    # 然后打开并修改时间/数据
+    # Then open and modify time/data
     with h5py.File(output_file, "r+") as out_f:
-        # 删除并重新创建 time 数据集
+        # Delete and recreate time dataset
         if "nirs/data1/time" in out_f:
             del out_f["nirs/data1/time"]
         out_f.create_dataset("nirs/data1/time", data=cropped_times)
 
-        # 删除并重新创建 dataTimeSeries 数据集
+        # Delete and recreate dataTimeSeries dataset
         if "nirs/data1/dataTimeSeries" in out_f:
             del out_f["nirs/data1/dataTimeSeries"]
         out_f.create_dataset("nirs/data1/dataTimeSeries", data=data)
@@ -360,7 +360,7 @@ def copy_reference_data(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if device_type == "eeg":
-        # EEG需要复制所有相关文件
+        # EEG needs to copy all related files
         output_files = []
         for ext in [".vhdr", ".vmrk", ".eeg"]:
             src = input_file.parent / f"{device_name}{ext}"
@@ -411,14 +411,14 @@ def matchcrop(
     --------
     Dict : 处理结果统计
     """
-    # 读取metadata
+    # Read metadata
     with open(metadata_json, "r") as f:
         metadata = json.load(f)
 
-    # 获取设备信息
+    # Get device info
     device_info = metadata.get("device_info", [])
 
-    # 查找参考设备的时间范围
+    # Find reference device time range
     reference_info = None
     for dev in device_info:
         if dev["name"] == reference_device:
@@ -435,7 +435,7 @@ def matchcrop(
     print(f"参考设备: {reference_device}")
     print(f"时间范围: {reference_start:.3f}s - {reference_end:.3f}s")
 
-    # 处理结果
+    # Process result
     results = {
         "reference_device": reference_device,
         "reference_time_range": reference_time_range,
@@ -443,13 +443,13 @@ def matchcrop(
         "output_files": {},
     }
 
-    # 处理每个设备
+    # Process each device
     for dev in device_info:
         device_name = dev["name"]
         device_type = detect_device_type(device_name)
 
         if device_name == reference_device:
-            # 复制参考设备数据
+            # Copy reference device data
             print(f"  复制参考设备: {device_name} ({device_type})")
             try:
                 copy_result = copy_reference_data(device_name, device_type, output_dir)
@@ -459,10 +459,10 @@ def matchcrop(
                 print(f"    -> 复制失败: {e}")
             continue
 
-        # 裁剪其他设备数据
+        # Crop other device data
         print(f"  裁剪设备: {device_name} ({device_type})")
 
-        # 获取设备的时间偏移（如果有漂移校正）
+        # Get device time offset (if drift correction exists)
         drift = (
             metadata.get("timeline_metadata", {})
             .get("drift_corrections", {})
@@ -470,7 +470,7 @@ def matchcrop(
         )
         device_offset = drift.get("offset", 0.0)
 
-        # 查找原始数据文件
+        # Find original data file
         input_file = find_raw_data_file(device_name, device_type)
 
         if input_file is None:
@@ -503,7 +503,7 @@ def matchcrop(
                 results["output_files"][device_name] = crop_result
 
             elif device_type == "eeg":
-                # EEG特殊处理：需要裁剪并保存
+                # EEG special handling: need to crop and save
                 crop_result = crop_eeg_data(
                     input_file,
                     output_dir,
@@ -519,7 +519,7 @@ def matchcrop(
         except Exception as e:
             print(f"    -> 裁剪失败: {e}")
 
-    # 保存metadata
+    # Save metadata
     output_metadata = output_dir / f"{output_prefix}_metadata.json"
     output_dir.mkdir(parents=True, exist_ok=True)
     with open(output_metadata, "w") as f:

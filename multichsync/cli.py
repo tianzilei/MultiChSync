@@ -28,6 +28,7 @@ from .quality import (
     batch_compute_resting_metrics,
     process_one_snirf_with_metadata,
     batch_process_snirf_folder_with_metadata,
+    generate_all_visualizations,
 )
 
 # Mapping from CLI method names to internal method names
@@ -80,7 +81,7 @@ def fnirs_patch(args):
             sys.exit(1)
 
         if args.inplace:
-            # 原地修复
+            # In-place patch
             if args.output:
                 print("警告: --inplace参数已指定，--output参数将被忽略")
 
@@ -92,7 +93,7 @@ def fnirs_patch(args):
             )
             print(f"原地修复完成: {patched_path}")
         else:
-            # 创建新文件
+            # Create new file
             patched_path = patch_snirf_for_mne(
                 input_snirf=args.input,
                 output_snirf=args.output,
@@ -203,22 +204,22 @@ def marker_extract(args):
             Path(args.output) if args.output else input_path.with_suffix(".marker.csv")
         )
 
-        # 确定提取类型
+        # Determine extraction type
         extract_type = args.type
         if not extract_type:
-            # 根据文件扩展名猜测
+            # Guess based on file extension
             if input_path.suffix.lower() == ".vmrk":
                 extract_type = "brainvision"
             elif input_path.suffix.lower() == ".csv":
-                # 需要进一步检查内容，暂时默认为biopac
+                # Needs further content check, default to biopac for now
                 extract_type = "biopac"
             elif input_path.suffix.lower() in [".txt", ".csv"]:
-                # fNIRS文件可能是.txt或.csv
+                # fNIRS files can be .txt or .csv
                 extract_type = "fnirs"
             else:
                 raise ValueError("无法自动检测文件类型，请使用--type参数指定")
 
-        # 调用对应的提取函数
+        # Call corresponding extraction function
         if extract_type == "biopac":
             df = extract_biopac_marker(
                 input_csv=input_path,
@@ -249,7 +250,7 @@ def marker_batch(args):
     import os
 
     try:
-        # 确定要处理的类型
+        # Determine types to process
         types = args.types.split(",") if args.types else ["fnirs", "ecg", "eeg"]
 
         stats = {"fnirs": 0, "ecg": 0, "eeg": 0, "failed": 0, "skipped": 0}
@@ -269,7 +270,7 @@ def marker_batch(args):
             for csv_file in sorted(fnirs_input_dir.glob("*.csv")):
                 if args.max_files and stats["fnirs"] >= args.max_files:
                     break
-                # 输出文件名不添加_marker后缀，直接使用原文件名
+                # Output filename uses original name without _marker suffix
                 output_file = fnirs_output_dir / csv_file.name
                 if args.skip_existing and output_file.exists():
                     stats["skipped"] += 1
@@ -293,11 +294,11 @@ def marker_batch(args):
             )
             ecg_output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 查找所有*_input.csv文件（BIDS规则）
+            # Find all *_input.csv files (BIDS rule)
             for csv_file in sorted(ecg_input_dir.glob("*_input.csv")):
                 if args.max_files and stats["ecg"] >= args.max_files:
                     break
-                # 输出文件名不添加_marker后缀
+                # Output filename without _marker suffix
                 output_file = ecg_output_dir / csv_file.name
                 if args.skip_existing and output_file.exists():
                     stats["skipped"] += 1
@@ -310,7 +311,7 @@ def marker_batch(args):
                         tolerance=args.tolerance,
                     )
                     stats["ecg"] += 1
-                    # 删除已成功提取的 input 文件（marker 提取后不再需要）
+                    # Delete successfully extracted input files (no longer needed after marker extraction)
                     csv_file.unlink(missing_ok=True)
                     print(f"  [已删除] {csv_file.name}")
                 except Exception as e:
@@ -330,7 +331,7 @@ def marker_batch(args):
             for vmrk_file in sorted(eeg_input_dir.rglob("*.vmrk")):
                 if args.max_files and stats["eeg"] >= args.max_files:
                     break
-                # 输出文件名不添加_marker后缀，直接使用原文件名（去掉.vmrk扩展名）
+                # Output filename uses original name without _marker suffix (remove .vmrk extension)
                 output_file = eeg_output_dir / f"{vmrk_file.stem}.csv"
                 if args.skip_existing and output_file.exists():
                     stats["skipped"] += 1
@@ -367,9 +368,9 @@ def marker_clean(args):
         if not input_path.exists():
             raise FileNotFoundError(f"输入路径不存在: {input_path}")
 
-        # 确定清洗模式
+        # Determine cleaning mode
         if input_path.is_file():
-            # 单个文件清洗
+            # Single file cleaning
             print(f"清洗单个文件: {input_path}")
             result = clean_marker_csv(
                 csv_path=input_path,
@@ -384,7 +385,7 @@ def marker_clean(args):
             print(f"清洗结果: {result}")
 
         elif input_path.is_dir():
-            # 批量清洗目录
+            # Batch directory cleaning
             print(f"批量清洗目录: {input_path}")
             output_dir = (
                 None
@@ -450,19 +451,19 @@ def marker_match(args):
         from pathlib import Path
         from multichsync.marker import match_by_filename
 
-        # 获取文件名
+        # Get filename
         if args.filename:
-            # 使用文件名匹配模式 - 从Data/convert自动加载数据
+            # Use filename matching mode - auto load data from Data/convert
             filename = args.filename
             convert_dir = args.convert_dir if args.convert_dir else "Data/convert"
 
             print(f"正在匹配文件: {filename}")
             print(f"数据目录: {convert_dir}")
 
-            # 将CLI方法名映射到内部方法名
+            # Map CLI method names to internal method names
             internal_method = METHOD_NAME_MAPPING[args.method]
 
-            # 调用文件名匹配函数
+            # Call filename matching function
             results = match_by_filename(
                 filename=filename,
                 convert_dir=convert_dir,
@@ -477,7 +478,7 @@ def marker_match(args):
                 generate_plots=not args.no_plots,
             )
 
-            # 打印结果摘要
+            # Print result summary
             print(f"匹配完成!")
             print(
                 f"  输出目录: {args.output_dir if args.output_dir else 'data/matching'}"
@@ -492,7 +493,7 @@ def marker_match(args):
                 f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
             )
 
-            # 打印设备统计
+            # Print device statistics
             if "device_stats" in results:
                 print(f"  设备统计:")
                 for stat in results["device_stats"]:
@@ -501,7 +502,7 @@ def marker_match(args):
                         f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
                     )
 
-            # 打印漂移校正
+            # Print drift correction
             if "drift_corrections" in results:
                 print(f"  漂移校正:")
                 for i, drift in enumerate(results["drift_corrections"]):
@@ -510,47 +511,47 @@ def marker_match(args):
                             f"    设备{i + 1}: 偏移 {drift.get('offset', 0):.3f}s, 缩放 {drift.get('scale', 1):.5f}, R²={drift.get('r_squared', 0):.3f}"
                         )
         else:
-            # 兼容旧模式：从目录或文件列表加载
+            # Backward compatible mode: load from directory or file list
             from multichsync.marker import match_multiple_files_enhanced
 
-            # 获取文件列表
+            # Get file list
             if args.input_dir:
-                # 从目录读取文件
+                # Read files from directory
                 input_dir = Path(args.input_dir)
                 if not input_dir.exists():
                     raise FileNotFoundError(f"输入目录不存在: {input_dir}")
 
-                # 查找CSV文件
+                # Find CSV files
                 csv_files = list(input_dir.glob("*.csv"))
                 if len(csv_files) < 2:
                     raise ValueError(
                         f"需要至少2个CSV文件进行匹配，但只找到 {len(csv_files)} 个"
                     )
 
-                # 排序以确保一致性
+                # Sort for consistency
                 csv_files.sort()
                 file_paths = [str(f) for f in csv_files]
                 print(f"从目录加载 {len(file_paths)} 个文件: {input_dir}")
             elif args.input_files:
-                # 直接指定文件列表（支持带或不带扩展名）
+                # Directly specify file list (support with or without extension)
                 file_paths = []
                 for f in args.input_files:
                     p = Path(f)
                     if p.exists():
                         file_paths.append(str(p))
                     else:
-                        # 尝试添加 .csv 后缀
+                        # Try adding .csv suffix
                         p_csv = p.with_suffix(".csv")
                         if p_csv.exists():
                             file_paths.append(str(p_csv))
                         else:
-                            # 尝试在Data/marker子文件夹中查找
+                            # Try finding in Data/marker subfolder
                             marker_dir = Path("Data/marker")
                             if marker_dir.exists():
-                                # 智能匹配：尝试多种模式（支持简化和完整文件名）
+                                # Smart matching: try multiple patterns (support simplified and full filenames)
                                 input_name = p.name
 
-                                # 判断输入文件的基础名（去掉常见后缀）
+                                # Determine base name of input file (remove common suffixes)
                                 base_name = (
                                     input_name.replace("_ecg", "")
                                     .replace("_fnirs", "")
@@ -558,12 +559,12 @@ def marker_match(args):
                                     .replace("_input", "")
                                 )
 
-                                # 根据输入后缀确定优先搜索的子文件夹
+                                # Determine priority search subfolder based on input suffix
                                 priority_subdirs = []
                                 if "_input" in input_name:
                                     priority_subdirs = [
                                         "ecg"
-                                    ]  # _input 后缀优先搜索 ecg 文件夹
+                                    ]  # _input suffix prioritizes search in ecg folder
                                 elif "_ecg" in input_name:
                                     priority_subdirs = ["ecg"]
                                 elif "_fnirs" in input_name:
@@ -571,28 +572,28 @@ def marker_match(args):
                                 elif "_eeg" in input_name:
                                     priority_subdirs = ["eeg"]
 
-                                # 构建搜索模式
+                                # Build search patterns
                                 search_patterns = [
-                                    input_name,  # 原始输入
-                                    f"{input_name}_marker",  # 加_marker后缀
-                                    # 特殊处理：ecg → input 转换
+                                    input_name,  # Original input
+                                    f"{input_name}_marker",  # Add _marker suffix
+                                    # Special handling: ecg -> input conversion
                                     input_name.replace("_ecg", "_input"),
                                     input_name.replace("_ecg", "") + "_input",
-                                    # 特殊处理：fnirs/eeg 保持原样
+                                    # Special handling: fnirs/eeg stay as is
                                     input_name.replace("_fnirs", ""),
                                     input_name.replace("_eeg", ""),
-                                    # 如果用户已输入 _input，需要也尝试其他变体
+                                    # If user already entered _input, also try other variants
                                     input_name.replace("_input", "_ecg"),
                                     input_name.replace("_input", ""),
-                                    # 添加基础名模式（去掉各种后缀后）
+                                    # Add base name patterns (after removing various suffixes)
                                     base_name,
-                                    f"{base_name}_input",  # 加上 _input 后缀
-                                    f"{base_name}_ecg",  # 加上 _ecg 后缀
-                                    f"{base_name}_fnirs",  # 加上 _fnirs 后缀
-                                    f"{base_name}_eeg",  # 加上 _eeg 后缀
+                                    f"{base_name}_input",  # Add _input suffix
+                                    f"{base_name}_ecg",  # Add _ecg suffix
+                                    f"{base_name}_fnirs",  # Add _fnirs suffix
+                                    f"{base_name}_eeg",  # Add _eeg suffix
                                 ]
 
-                                # 先搜索优先的子文件夹，再搜索其他子文件夹
+                                # Search priority subfolders first, then other subfolders
                                 subdirs_to_search = priority_subdirs + [
                                     s
                                     for s in ["fnirs", "eeg", "ecg"]
@@ -622,14 +623,14 @@ def marker_match(args):
                                     ):
                                         break
 
-                            # 智能匹配：检查是否匹配了正确的文件
+                            # Smart matching: check if correct file was matched
                             matched = False
                             if file_paths:
                                 input_stem = (
                                     p.stem.replace("_ecg", "_input")
                                     .replace("_fnirs", "")
                                     .replace("_eeg", "")
-                                    .replace("_input", "")  # 处理已带 _input 后缀的情况
+                                    .replace("_input", "")  # Handle case where _input suffix is already present
                                 )
                                 for fp in file_paths:
                                     fp_stem = (
@@ -655,16 +656,16 @@ def marker_match(args):
             else:
                 raise ValueError("必须提供 --filename 或 --input-dir 或 --input-files")
 
-            # 设备名称（可选）
+            # Device name (optional)
             device_names = args.device_names if args.device_names else None
 
-            # 输出目录
+            # Output directory
             output_dir = args.output_dir if args.output_dir else "data/matching"
 
-            # 将CLI方法名映射到内部方法名
+            # Map CLI method names to internal method names
             internal_method = METHOD_NAME_MAPPING[args.method]
 
-            # 调用匹配函数
+            # Call matching function
             results = match_multiple_files_enhanced(
                 file_paths=file_paths,
                 device_names=device_names,
@@ -679,7 +680,7 @@ def marker_match(args):
                 generate_plots=not args.no_plots,
             )
 
-            # 打印结果摘要
+            # Print result summary
             print(f"匹配完成!")
             print(f"  输出目录: {output_dir}")
             print(f"  时间线CSV: {output_dir}/{args.output_prefix}_timeline.csv")
@@ -691,7 +692,7 @@ def marker_match(args):
                 f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
             )
 
-            # 打印设备统计
+            # Print device statistics
             if "device_stats" in results:
                 print(f"  设备统计:")
                 for stat in results["device_stats"]:
@@ -700,7 +701,7 @@ def marker_match(args):
                         f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
                     )
 
-            # 打印漂移校正
+            # Print drift correction
             if "drift_corrections" in results:
                 print(f"  漂移校正:")
                 for i, drift in enumerate(results["drift_corrections"]):
@@ -1013,7 +1014,7 @@ def quality_batch_with_metadata(args):
 
         print(f"  汇总文件: {output_dir / 'snirf_batch_summary_with_metadata.csv'}")
 
-        # 统计元数据写入情况
+        # Count metadata write status
         n_with_metadata = (
             summary_df["metadata_written"].sum()
             if "metadata_written" in summary_df.columns
@@ -1067,6 +1068,134 @@ def quality_resting_metrics(args):
         sys.exit(1)
 
 
+def quality_visualize(args):
+    """处理质量评估可视化命令"""
+    try:
+        from pathlib import Path
+        from multichsync.quality.visualization import generate_all_visualizations
+
+        input_path = Path(args.input)
+        output_dir = Path(args.output_dir) if args.output_dir else input_path.parent
+
+        # Determine visualization types to generate
+        generate_heatmap = not args.no_heatmap
+        generate_snr = not args.no_snr
+        generate_corr = not args.no_correlation
+
+        # Call visualization function
+        results = generate_all_visualizations(
+            input_snirf_path=input_path,
+            output_dir=output_dir,
+            generate_heatmap=generate_heatmap,
+            generate_snr=generate_snr,
+            generate_correlation=generate_corr,
+            dpi=args.dpi,
+        )
+
+        print(f"质量评估可视化完成:")
+        print(f"  输出目录: {output_dir}")
+
+        for viz_type, path in results.items():
+            if path:
+                print(f"  {viz_type}: {path.name}")
+            else:
+                print(f"  {viz_type}: 生成失败")
+
+    except Exception as e:
+        print(f"质量评估可视化失败: {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def quality_visualize_batch(args):
+    """批量生成质量评估可视化"""
+    try:
+        from pathlib import Path
+        from multichsync.quality.visualization import generate_all_visualizations
+        import glob
+
+        input_dir = Path(args.input_dir)
+        output_dir = Path(args.output_dir) if args.output_dir else input_dir
+
+        # Find all quality assessment output files (directories containing _postfilter_detail.csv)
+        # Here we assume user has already run quality assessment
+        detail_files = list(output_dir.rglob("*_postfilter_detail.csv"))
+
+        if not detail_files:
+            print(f"警告: 在 {output_dir} 中未找到质量评估数据")
+            print(
+                f"请先运行质量评估: multichsync quality batch --input-dir <dir> --output-dir {output_dir}"
+            )
+            return
+
+        print(f"找到 {len(detail_files)} 个质量评估数据文件")
+
+        # Batch generate visualizations
+        success_count = 0
+        failed_files = []
+
+        # Group by file (same file has _postfilter_detail.csv and _comprehensive_detail.csv)
+        processed_stems = set()
+
+        for detail_file in detail_files:
+            stem = detail_file.stem.replace("_postfilter_detail", "")
+
+            if stem in processed_stems:
+                continue
+            processed_stems.add(stem)
+
+            # Find corresponding SNIRF file
+            snirf_files = list(input_dir.glob(f"{stem}.snirf"))
+            if not snirf_files:
+                # Try finding in parent directory
+                snirf_files = list(input_dir.rglob(f"{stem}.snirf"))
+
+            if not snirf_files:
+                print(f"  跳过 {stem}: 未找到 SNIRF 文件")
+                continue
+
+            snirf_path = snirf_files[0]
+
+            try:
+                results = generate_all_visualizations(
+                    input_snirf_path=snirf_path,
+                    output_dir=output_dir,
+                    generate_heatmap=not args.no_heatmap,
+                    generate_snr=not args.no_snr,
+                    generate_correlation=not args.no_correlation,
+                    dpi=args.dpi,
+                )
+
+                if any(results.values()):
+                    success_count += 1
+                    print(f"  完成: {stem}")
+                else:
+                    failed_files.append(stem)
+                    print(f"  失败: {stem}")
+
+            except Exception as e:
+                failed_files.append(stem)
+                print(f"  错误 {stem}: {e}")
+
+        print(f"\n批量可视化完成:")
+        print(f"  成功: {success_count}")
+        print(f"  失败: {len(failed_files)}")
+
+        if failed_files:
+            print(
+                f"  失败文件: {', '.join(failed_files[:5])}{'...' if len(failed_files) > 5 else ''}"
+            )
+
+    except Exception as e:
+        print(f"批量可视化失败: {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="多模态神经影像数据转换工具",
@@ -1095,7 +1224,7 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
 
-    # fnirs子命令
+    # fnirs subcommand
     fnirs_parser = subparsers.add_parser("fnirs", help="fNIRS相关操作")
     fnirs_subparsers = fnirs_parser.add_subparsers(
         dest="fnirs_command", help="fNIRS子命令"
@@ -1160,7 +1289,7 @@ def main():
     )
     patch_parser.set_defaults(func=fnirs_patch)
 
-    # ecg子命令
+    # ecg subcommand
     ecg_parser = subparsers.add_parser("ecg", help="ECG相关操作")
     ecg_subparsers = ecg_parser.add_subparsers(dest="ecg_command", help="ECG子命令")
 
@@ -1224,7 +1353,7 @@ def main():
     )
     ecg_batch_parser.set_defaults(func=ecg_batch)
 
-    # eeg子命令
+    # eeg subcommand
     eeg_parser = subparsers.add_parser("eeg", help="EEG相关操作")
     eeg_subparsers = eeg_parser.add_subparsers(dest="eeg_command", help="EEG子命令")
 
@@ -1284,7 +1413,7 @@ def main():
     )
     eeg_batch_parser.set_defaults(func=eeg_batch)
 
-    # marker子命令
+    # marker subcommand
     marker_parser = subparsers.add_parser("marker", help="Marker提取相关操作")
     marker_subparsers = marker_parser.add_subparsers(
         dest="marker_command", help="Marker子命令"
@@ -1471,7 +1600,7 @@ def main():
     )
     marker_match_parser.set_defaults(func=marker_match)
 
-    # marker crop子命令 - 添加入marker子解析器
+    # marker crop subcommand - added to marker subparser
     marker_crop_parser = marker_subparsers.add_parser(
         "crop", help="裁剪多设备timeline到统一时间范围"
     )
@@ -1492,7 +1621,7 @@ def main():
     )
     marker_crop_parser.set_defaults(func=marker_crop)
 
-    # marker matchcrop子命令 - 添加入marker子解析器
+    # marker matchcrop subcommand - added to marker subparser
     marker_matchcrop_parser = marker_subparsers.add_parser(
         "matchcrop", help="裁剪多设备原始数据（基于匹配后的timeline）"
     )
@@ -1516,7 +1645,7 @@ def main():
     )
     marker_matchcrop_parser.set_defaults(func=marker_matchcrop)
 
-    # marker matchcrop-aligned子命令 - 添加入marker子解析器
+    # marker matchcrop-aligned subcommand - added to marker subparser
     marker_matchcrop_aligned_parser = marker_subparsers.add_parser(
         "matchcrop-aligned",
         help="基于对齐的时间线裁剪多设备原始数据（使用共识时间范围）",
@@ -1541,7 +1670,7 @@ def main():
     )
     marker_matchcrop_aligned_parser.set_defaults(func=marker_matchcrop_aligned)
 
-    # quality子命令
+    # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")
     quality_subparsers = quality_parser.add_subparsers(
         dest="quality_command", help="Quality子命令"
@@ -1839,6 +1968,54 @@ def main():
     )
     quality_resting_metrics_parser.set_defaults(func=quality_resting_metrics)
 
+    # quality visualize
+    quality_visualize_parser = quality_subparsers.add_parser(
+        "visualize", help="生成质量评估可视化图表"
+    )
+    quality_visualize_parser.add_argument(
+        "--input", "-i", required=True, help="SNIRF文件路径"
+    )
+    quality_visualize_parser.add_argument(
+        "--output-dir", "-o", help="输出目录路径（默认：与输入文件相同目录）"
+    )
+    quality_visualize_parser.add_argument(
+        "--no-heatmap", action="store_true", help="不生成通道质量热图"
+    )
+    quality_visualize_parser.add_argument(
+        "--no-snr", action="store_true", help="不生成信噪比分布图"
+    )
+    quality_visualize_parser.add_argument(
+        "--no-correlation", action="store_true", help="不生成HbO-HbR相关性图"
+    )
+    quality_visualize_parser.add_argument(
+        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+    )
+    quality_visualize_parser.set_defaults(func=quality_visualize)
+
+    # quality visualize-batch
+    quality_visualize_batch_parser = quality_subparsers.add_parser(
+        "visualize-batch", help="批量生成质量评估可视化图表"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--input-dir", "-i", required=True, help="SNIRF文件目录路径"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--output-dir", "-o", help="输出目录路径（默认：与输入目录相同）"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--no-heatmap", action="store_true", help="不生成通道质量热图"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--no-snr", action="store_true", help="不生成信噪比分布图"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--no-correlation", action="store_true", help="不生成HbO-HbR相关性图"
+    )
+    quality_visualize_batch_parser.add_argument(
+        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+    )
+    quality_visualize_batch_parser.set_defaults(func=quality_visualize_batch)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1865,7 +2042,7 @@ def main():
         quality_parser.print_help()
         sys.exit(1)
 
-    # 调用对应的处理函数
+    # Call corresponding processing function
     if hasattr(args, "func"):
         args.func(args)
     else:

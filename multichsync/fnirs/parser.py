@@ -258,7 +258,7 @@ def parse_fnirs_header(txt_path):
     """
     parsed = parse_shimadzu_txt(txt_path)
     
-    # 转换为旧接口格式
+    # Convert to old interface format
     meta = parsed.meta
     channel_pairs = parsed.channel_pairs
     times = parsed.times
@@ -398,7 +398,7 @@ def load_coordinates(src_coords_csv, det_coords_csv):
         src_labels: source标签列表
         det_labels: detector标签列表
     """
-    # 调用新的load_coordinates函数，假设前缀为T和R
+    # Call new load_coordinates function, assuming prefixes T and R
     source_pos_3d, source_labels, source_map = _load_coordinates_with_map(src_coords_csv, expected_prefix="T")
     detector_pos_3d, detector_labels, detector_map = _load_coordinates_with_map(det_coords_csv, expected_prefix="R")
     

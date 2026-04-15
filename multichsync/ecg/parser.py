@@ -67,7 +67,7 @@ def parse_acq_file(acq_path: str, sampling_rate: Optional[int] = None) -> Dict:
     if not os.path.exists(acq_path):
         raise FileNotFoundError(f"ACQ文件不存在: {acq_path}")
     
-    # 优先使用bioread，其次使用neurokit2
+    # Prefer bioread, then neurokit2
     if BIOREAD_AVAILABLE:
         return _parse_with_bioread(acq_path, sampling_rate)
     elif NEUROKIT2_AVAILABLE:
@@ -82,7 +82,7 @@ def _parse_with_bioread(acq_path: str, sampling_rate: Optional[int] = None) -> D
     """
     data = bioread.read(acq_path)
     
-    # 获取通道信息
+    # Get channel info
     channels = []
     channel_data = {}
     
@@ -100,20 +100,20 @@ def _parse_with_bioread(acq_path: str, sampling_rate: Optional[int] = None) -> D
         channels.append(channel_info)
         channel_data[channel_name] = ch.data
     
-    # 创建DataFrame
+    # Create DataFrame
     df = pd.DataFrame(channel_data)
     
-    # 确定原始采样率（假设所有通道采样率相同）
+    # Determine original sampling rate (assume all channels have same rate)
     original_sr = data.channels[0].samples_per_second if data.channels else 1000
     
-    # 重采样
+    # Resample
     if sampling_rate and sampling_rate != original_sr:
         df = _resample_data(df, original_sr, sampling_rate)
         final_sr = sampling_rate
     else:
         final_sr = original_sr
     
-    # 计算时长
+    # Calculate duration
     duration = len(df) / final_sr if len(df) > 0 else 0
     
     return {
@@ -140,7 +140,7 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
     except Exception as e:
         raise ValueError(f"使用neurokit2读取ACQ文件失败: {e}")
     
-    # 获取通道信息
+    # Get channel info
     channels = []
     for col in data.columns:
         channel_info = {
@@ -154,7 +154,7 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
         }
         channels.append(channel_info)
     
-    # 重采样
+    # Resample
     if sampling_rate and sampling_rate != original_sr:
         resampled = {}
         for col in data.columns:
@@ -170,7 +170,7 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
         df = data.copy()
         final_sr = original_sr
     
-    # 计算时长
+    # Calculate duration
     duration = len(df) / final_sr if len(df) > 0 else 0
     
     return {
@@ -209,16 +209,16 @@ def _resample_data(df: pd.DataFrame, original_sr: int, target_sr: int) -> pd.Dat
     if original_sr == target_sr:
         return df.copy()
     
-    # 计算新的时间点
+    # Calculate new time points
     original_length = len(df)
     original_times = np.arange(original_length) / original_sr
     target_length = int(original_length * target_sr / original_sr)
     target_times = np.arange(target_length) / target_sr
     
-    # 对每个通道进行插值
+    # Interpolate each channel
     resampled_data = {}
     for col in df.columns:
-        # 线性插值
+        # Linear interpolation
         resampled_data[col] = np.interp(target_times, original_times, df[col].values)
     
     return pd.DataFrame(resampled_data)

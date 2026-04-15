@@ -67,25 +67,25 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
         include_stim_from_mark: 是否从Mark列创建stim组
         include_aux_count: 是否将Count列作为aux数据
     """
-    # 创建ParsedTxt对象（部分字段用占位符）
+    # Create ParsedTxt object (some fields use placeholders)
     signal_labels = []
     measurements_per_channel = _infer_measurements_per_channel(signal_labels)
-    # 由于不知道原始信号标签，假设为HbO/HbR/HbT
+    # Since original signal labels unknown, assume HbO/HbR/HbT
     n_cols = data_matrix.shape[1]
     if measurements_per_channel == 0:
-        # 推断
+        # Infer
         if n_cols % 3 == 0:
             measurements_per_channel = 3
         else:
             measurements_per_channel = 1
     
-    # 生成信号标签
+    # Generate signal labels
     if measurements_per_channel == 3:
         signal_labels = ["oxyHb", "deoxyHb", "totalHb"] * (n_cols // 3)
     else:
         signal_labels = [f"ProcessedData{i+1}" for i in range(n_cols)]
     
-    # 创建ParsedTxt对象
+    # Create ParsedTxt object
     parsed = ParsedTxt(
         meta=meta,
         channel_pairs=channel_pairs,
@@ -97,7 +97,7 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
         count_values=[""] * len(times),
     )
     
-    # 调用核心写入函数
+    # Call core writing function
     _write_snirf_core(
         output_path=output_path,
         parsed=parsed,

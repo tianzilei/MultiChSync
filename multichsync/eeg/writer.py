@@ -15,7 +15,7 @@ try:
 except ImportError:
     MNE_AVAILABLE = False
 
-# 导出格式类型
+# Export format types
 ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
 
 
@@ -67,14 +67,14 @@ def _clean_annotations(raw: 'mne.io.BaseRaw') -> 'mne.io.BaseRaw':
         if 0 <= sample < n_times:
             mask[i] = True
         else:
-            # 标注超出数据范围，跳过
+            # Annotations out of data range, skip
             pass
     
     if np.all(mask):
-        # 所有标注都在范围内
+        # All annotations are within range
         return raw
     
-    # 过滤标注
+    # Filter annotations
     filtered_annotations = raw.annotations[mask]
     raw.set_annotations(filtered_annotations)
     
@@ -112,20 +112,20 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
     
     output_path = Path(output_path)
     
-    # 确保输出目录存在
+    # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # 获取MNE格式和扩展名
+    # Get MNE format and extension
     mne_format, expected_ext = _normalize_export_format(export_format)
     
-    # 如果输出路径没有扩展名或扩展名不匹配，添加正确的扩展名
+    # If output path has no extension or extension does not match, add correct extension
     if output_path.suffix.lower() != expected_ext.lower():
         output_path = output_path.with_suffix(expected_ext)
     
-    # 清理超出数据范围的标注
+    # Clean up annotations out of data range
     raw = _clean_annotations(raw)
     
-    # 导出文件
+    # Export file
     export.export_raw(
         fname=str(output_path),
         raw=raw,

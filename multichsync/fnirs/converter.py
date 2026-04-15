@@ -4,7 +4,7 @@ from .writer import write_snirf, _write_snirf_core
 try:
     from .mne_patch import patch_snirf_for_mne, patch_snirf_inplace
 except ImportError:
-    # 如果h5py不可用，提供存根函数
+    # If h5py not available, provide stub function
     patch_snirf_for_mne = None
     patch_snirf_inplace = None
 
@@ -25,20 +25,20 @@ def convert_fnirs_to_snirf(txt_path, src_coords_csv, det_coords_csv, output_path
     返回:
         output_path: 输出文件路径
     """
-    # 解析TXT文件（使用新的解析器）
+    # Parse TXT file (using new parser)
     parsed = parse_shimadzu_txt(txt_path)
     
-    # 加载坐标和映射
+    # Load coordinates and mapping
     source_pos_3d, source_labels, source_map = _load_coordinates_with_map(src_coords_csv, expected_prefix="T")
     detector_pos_3d, detector_labels, detector_map = _load_coordinates_with_map(det_coords_csv, expected_prefix="R")
     
-    # 输出路径
+    # Output path
     if output_path is None:
         output_path = Path(txt_path).with_suffix('.snirf')
     else:
         output_path = Path(output_path)
     
-    # 写入SNIRF（使用核心写入函数）
+    # Write SNIRF (using core writing function)
     _write_snirf_core(
         output_path=output_path,
         parsed=parsed,
@@ -53,13 +53,13 @@ def convert_fnirs_to_snirf(txt_path, src_coords_csv, det_coords_csv, output_path
     
     print(f"SNIRF文件已保存: {output_path}")
     
-    # 如果需要，应用MNE兼容性修复
+    # If needed, apply MNE compatibility patch
     if patch_for_mne:
         if patch_snirf_inplace is None:
             print("警告: 无法导入MNE修复模块，跳过修复步骤")
         else:
             try:
-                # 原地修复文件
+                # In-place fix file
                 patched_path = patch_snirf_inplace(
                     snirf_path=output_path,
                     dummy_wavelengths=(760.0, 850.0),
@@ -87,21 +87,21 @@ def convert_fnirs_to_snirf_legacy(txt_path, src_coords_csv, det_coords_csv, outp
     返回:
         output_path: 输出文件路径
     """
-    # 解析TXT文件（使用旧接口）
+    # Parse TXT file (using old interface)
     meta, channel_pairs, times, data_matrix = parse_fnirs_header(txt_path)
     
-    # 加载坐标（使用旧接口）
+    # Load coordinates (using old interface)
     from .parser import load_coordinates
     sourcePos3D, detectorPos3D, src_labels, det_labels = load_coordinates(src_coords_csv, det_coords_csv)
     
-    # 创建映射（假设标签格式为T1,T2,...和R1,R2,...）
+    # Create mapping (assuming label format T1,T2,... and R1,R2,...)
     src_map = {}
     for i, label in enumerate(src_labels, start=1):
-        # 提取数字部分
+        # Extract numeric part
         if label.startswith('T'):
             num = int(label[1:])
         else:
-            # 尝试提取数字
+            # Try to extract number
             import re
             match = re.search(r'\d+', label)
             num = int(match.group()) if match else i
@@ -117,11 +117,11 @@ def convert_fnirs_to_snirf_legacy(txt_path, src_coords_csv, det_coords_csv, outp
             num = int(match.group()) if match else i
         det_map[num] = i
     
-    # 输出路径
+    # Output path
     if output_path is None:
         output_path = Path(txt_path).stem + '.snirf'
     
-    # 写入SNIRF（使用旧接口的write_snirf）
+    # Write SNIRF (using old interface write_snirf)
     from .writer import write_snirf as write_snirf_legacy
     write_snirf_legacy(
         output_path=output_path,

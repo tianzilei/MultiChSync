@@ -9,7 +9,7 @@ from typing import List, Optional, Union, Literal, Tuple
 
 from .converter import convert_eeg_format, convert_eeg_to_brainvision, convert_eeg_to_eeglab, convert_eeg_to_edf
 
-# 导出格式类型
+# Export format types
 ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
 
 
@@ -49,24 +49,24 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
     if not input_dir.exists():
         raise FileNotFoundError(f"输入目录不存在: {input_dir}")
     
-    # 确定输出目录
+    # Determine output directory
     if output_dir is None:
         output_dir = input_dir.parent / "convert"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 支持的输入文件扩展名
+    # Supported input file extensions
     supported_extensions = {
-        # EEGLAB格式
+        # EEGLAB format
         '.set',
-        # Curry格式
+        # Curry format
         '.cdt', '.dap', '.dat', '.rs3', '.cef', '.cdt.dpa'
     }
     
-    # 收集文件
+    # Collect files
     eeg_files = []
     if recursive:
-        # 递归搜索
+        # Recursive search
         for root, dirs, files in os.walk(input_dir):
             # Skip hidden directories
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__MACOSX']
@@ -76,26 +76,26 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                     continue
                 file_path = Path(root) / file
                 if file_path.suffix.lower() in supported_extensions:
-                    # 对于.fdt文件，只处理对应的.set文件
+                    # For .fdt files, only process corresponding .set files
                     if file_path.suffix.lower() == '.fdt':
                         set_file = file_path.with_suffix('.set')
                         if set_file.exists():
-                            # 跳过.fdt，让.set文件处理
+                            # Skip .fdt, let .set file handle
                             continue
                     eeg_files.append(file_path)
     else:
-        # 非递归搜索
+        # Non-recursive search
         for file in os.listdir(input_dir):
             # Skip hidden files (macOS ._ files) and system files
             if file.startswith('.') or file == '__MACOSX':
                 continue
             file_path = input_dir / file
             if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                # 对于.fdt文件，只处理对应的.set文件
+                # For .fdt files, only process corresponding .set files
                 if file_path.suffix.lower() == '.fdt':
                     set_file = file_path.with_suffix('.set')
                     if set_file.exists() and set_file in input_dir.iterdir():
-                        # 跳过.fdt，让.set文件处理
+                        # Skip .fdt, let .set file handle
                         continue
                 eeg_files.append(file_path)
     
@@ -112,10 +112,10 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
     
     for i, input_file in enumerate(eeg_files, 1):
         try:
-            # 确定相对路径（用于保持目录结构）
+            # Determine relative path (for maintaining directory structure)
             if recursive:
                 rel_path = input_file.relative_to(input_dir)
-                # 移除可能的父目录引用
+                # Remove possible parent directory reference
                 rel_path = Path(*rel_path.parts)
                 output_subdir = output_dir / rel_path.parent
                 output_subdir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +123,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
             else:
                 output_file = output_dir / (input_file.stem + _get_extension_for_format(export_format))
             
-            # 执行转换
+            # Execute conversion
             raw, output_path = convert_eeg_format(
                 file_path=input_file,
                 export_format=export_format,

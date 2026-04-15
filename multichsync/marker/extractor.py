@@ -54,7 +54,7 @@ def extract_marker_time_only(
     input_csv = Path(input_csv)
     output_csv = Path(output_csv)
 
-    # ---------- 读取 ----------
+    # ---------- Read ----------
     df = pd.read_csv(input_csv)
 
     if df.shape[1] != 1:
@@ -63,35 +63,35 @@ def extract_marker_time_only(
     col = df.columns[0]
     s = pd.to_numeric(df[col], errors="coerce")
 
-    # ---------- 映射到 0 / 5 ----------
+    # ---------- Map to 0 / 5 ----------
     s_clean = s.copy()
     s_clean[(s - 0).abs() <= tolerance] = 0
     s_clean[(s - 5).abs() <= tolerance] = 5
     s_clean[~((s_clean == 0) | (s_clean == 5))] = pd.NA
 
-    # ---------- 时间轴 ----------
+    # ---------- Timeline ----------
     step = 1 / fs
     time = [i * step for i in range(len(s_clean))]
 
-    # ---------- 边沿检测 ----------
+    # ---------- Edge Detection ----------
     mask = s_clean != s_clean.shift(1)
     mask.iloc[0] = True
 
-    # ---------- 构建输出 ----------
+    # ---------- Build Output ----------
     df_out = pd.DataFrame({"Time(sec)": time})
 
     df_out = df_out[mask].copy()
 
-    # 重置 index（作为 marker 编号）
+    # Reset index (as marker number)
     df_out.reset_index(drop=True, inplace=True)
 
-    # 时间精度
+    # Time precision
     df_out["Time(sec)"] = df_out["Time(sec)"].round(4)
 
-    # ---------- 保存 ----------
+    # ---------- Save ----------
     df_out.to_csv(
         output_csv,
-        index=True,  # 保留 index = marker编号
+        index=True,  # keep index = marker number
         encoding="utf-8-sig",
         float_format="%.6f",
     )
@@ -119,7 +119,7 @@ def extract_brainvision_marker(
     if not vhdr_path.exists():
         raise FileNotFoundError(f"vhdr not found: {vhdr_path}")
 
-    # ---------- 读取 SamplingInterval（单位：µs） ----------
+    # ---------- Read SamplingInterval (unit: µs) ----------
     sampling_interval_us = None
 
     with open(vhdr_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -131,10 +131,10 @@ def extract_brainvision_marker(
     if sampling_interval_us is None:
         raise ValueError("SamplingInterval not found")
 
-    # ---------- 转换为秒 ----------
+    # ---------- Convert to seconds ----------
     step_sec = sampling_interval_us / 1_000_000.0  # µs → sec
 
-    # ---------- 解析 vmrk ----------
+    # ---------- Parse vmrk ----------
     rows = []
 
     with open(vmrk_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -144,7 +144,7 @@ def extract_brainvision_marker(
             if not line.startswith("Mk"):
                 continue
 
-            if line.startswith("Mk1="):  # 忽略起始marker
+            if line.startswith("Mk1="):  # ignore start marker
                 continue
 
             try:
@@ -163,7 +163,7 @@ def extract_brainvision_marker(
             except:
                 continue
 
-            # ⚠️ BrainVision 是 1-based index
+            # BrainVision uses 1-based index
             time_sec = (pos - 1) * step_sec
 
             rows.append({"reference_time": round(time_sec, 6), "value": desc})
@@ -172,10 +172,10 @@ def extract_brainvision_marker(
     df_out = pd.DataFrame(rows)
     df_out.reset_index(drop=True, inplace=True)
 
-    # ---------- 保存 ----------
+    # ---------- Save ----------
     df_out.to_csv(
         output_csv,
-        index=True,  # marker编号
+        index=True,  # marker number
         encoding="utf-8-sig",
         float_format="%.6f",
     )
@@ -204,9 +204,9 @@ def extract_fnirs_marker(
     input_csv = Path(input_csv)
     output_csv = Path(output_csv)
 
-    # ---------- 找到表头行 ----------
+    # ---------- Find header row ----------
     header_idx = None
-    # 尝试多种编码
+    # Try multiple encodings
     encodings_to_try = ["gbk", "utf-8-sig", "latin1"]
     for enc in encodings_to_try:
         try:
@@ -223,15 +223,15 @@ def extract_fnirs_marker(
     if header_idx is None:
         raise ValueError(f"'Start Time' header row not found in: {input_csv}")
 
-    # ---------- 从表头行开始读 ----------
-    # 尝试多种编码读取CSV
+    # ---------- Read from header row ----------
+    # Try multiple encodings to read CSV
     df = None
     for enc in encodings_to_try:
         try:
             df = pd.read_csv(
                 input_csv, skiprows=header_idx, encoding=enc, engine="python"
             )
-            # 检查是否有必需的列
+            # Check if required columns exist
             if "Start Time" in df.columns or "Start Time" in [
                 str(c).strip() for c in df.columns
             ]:
@@ -242,7 +242,7 @@ def extract_fnirs_marker(
     if df is None:
         raise ValueError(f"无法读取CSV文件，尝试了编码: {encodings_to_try}")
 
-    # 去掉列名首尾空格
+    # Strip column name whitespace
     df.columns = [str(c).strip() for c in df.columns]
 
     required_cols = ["Start Time", "Protocol Type"]
@@ -250,7 +250,7 @@ def extract_fnirs_marker(
         if c not in df.columns:
             raise KeyError(f"Column '{c}' not found in file: {input_csv}")
 
-    # ---------- 转换 ----------
+    # ---------- Convert ----------
     df_out = pd.DataFrame(
         {
             "reference_time": df["Start Time"].apply(hms_to_sec).round(4),
@@ -258,16 +258,16 @@ def extract_fnirs_marker(
         }
     )
 
-    # 可选：去掉空行
+    # Optional: remove empty rows
     df_out = df_out.dropna(subset=["reference_time", "value"]).copy()
 
-    # 重置 index，作为 marker 编号
+    # Reset index, as marker number
     df_out.reset_index(drop=True, inplace=True)
 
-    # ---------- 保存 ----------
+    # ---------- Save ----------
     df_out.to_csv(
         output_csv,
-        index=True,  # 保留 index 以计数 marker
+        index=True,  # keep index to count markers
         encoding="utf-8-sig",
         float_format="%.4f",
     )
@@ -326,23 +326,23 @@ def clean_marker_csv(
         print(f"[读取失败] {csv_path.name}: {e}")
         return "read_error"
 
-    # ---------- 1. 删除无效文件 ----------
-    # 只有header / 没有数据
+    # ---------- 1. Delete invalid files ----------
+    # Only header / no data
     if df.empty:
         print(f"[删除空文件] {csv_path.name}")
         csv_path.unlink(missing_ok=True)
         return "deleted_empty"
 
-    # 小于min_rows行数据
+    # Less than min_rows rows of data
     if len(df) < min_rows:
         print(f"[删除数据过少文件] {csv_path.name} | 行数={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_too_few_rows"
 
-    # ---------- 2. 检查时间列 ----------
-    # 自动检测时间列名
+    # ---------- 2. Check time column ----------
+    # Auto-detect time column name
     if time_col is None:
-        # 常见的时间列名
+        # Common time column names
         possible_time_cols = ["Time(sec)", "reference_time", "time", "Time"]
         for col in possible_time_cols:
             if col in df.columns:
@@ -350,7 +350,7 @@ def clean_marker_csv(
                 break
 
         if time_col is None:
-            # 尝试查找包含"time"的列名（不区分大小写）
+            # Try to find column name containing "time" (case insensitive)
             for col in df.columns:
                 if "time" in col.lower():
                     time_col = col
@@ -364,22 +364,22 @@ def clean_marker_csv(
         print(f"[缺少时间列] {csv_path.name} | 未找到列: {time_col}")
         return "missing_time_col"
 
-    # 转成数值，无法转换的设为 NaN
+    # Convert to numeric, set NaN if conversion fails
     df[time_col] = pd.to_numeric(df[time_col], errors="coerce")
 
-    # 删除时间为空的行
+    # Delete rows with empty time
     df = df.dropna(subset=[time_col]).copy()
 
-    # 如果删完后不足最小行数，直接删文件
+    # If after deletion less than min_rows, delete file
     if len(df) < min_rows:
         print(f"[删除无效时间文件] {csv_path.name} | 有效时间行数={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_invalid_time"
 
-    # ---------- 3. 排序 ----------
+    # ---------- 3. Sort ----------
     df = df.sort_values(by=time_col).reset_index(drop=True)
 
-    # ---------- 3.1 (可选) 删除所有Time=0的记录 ----------
+    # ---------- 3.1 (Optional) Delete all Time=0 records ----------
     if remove_start and len(df) > 0:
         zero_mask = df[time_col] == 0
         zero_count = zero_mask.sum()
@@ -387,13 +387,13 @@ def clean_marker_csv(
             df = df[~zero_mask].reset_index(drop=True)
             print(f"[删除首点为0] {csv_path.name} | 删除{zero_count}行，时间=0")
 
-    # 如果删除后不足最小行数，直接删文件
+    # If after deletion less than min_rows, delete file
     if len(df) < min_rows:
         print(f"[删除首点为0后] {csv_path.name} | 行数不足={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_invalid_time"
 
-    # ---------- 4. 去除过近 marker ----------
+    # ---------- 4. Remove too-close markers ----------
     keep_indices = []
     last_kept_time = None
 
@@ -408,18 +408,18 @@ def clean_marker_csv(
                 keep_indices.append(idx)
                 last_kept_time = current_time
             else:
-                # 时间过近，丢弃当前行
+                # Time too close, discard current row
                 pass
 
     cleaned_df = df.loc[keep_indices].copy().reset_index(drop=True)
 
-    # 清洗后如果不足min_rows行，也可以删掉
+    # After cleaning if less than min_rows, can also delete
     if len(cleaned_df) < min_rows:
         print(f"[清洗后删除文件] {csv_path.name} | 清洗后行数={len(cleaned_df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_after_clean"
 
-    # ---------- 5. 保存 ----------
+    # ---------- 5. Save ----------
     if out_path is None:
         out_path = csv_path
     else:
@@ -462,7 +462,7 @@ def clean_marker_folder(
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 递归搜索所有CSV文件（支持二级目录结构）
+    # Recursively search all CSV files (supports two-level directory structure)
     csv_files = list(input_dir.rglob("*.csv"))
     # Filter out hidden files (macOS ._ files) and system files
     csv_files = [
@@ -474,11 +474,11 @@ def clean_marker_folder(
         print("未找到 csv 文件")
         return {}
 
-    # 计算相对路径以保留目录结构
+    # Calculate relative path to preserve directory structure
     def get_output_path(csv_file: Path) -> Optional[Path]:
         if output_dir is None:
-            return None  # 原地覆盖
-        # 计算相对路径并保留目录结构
+            return None  # overwrite in place
+        # Calculate relative path and preserve directory structure
         rel_path = csv_file.relative_to(input_dir)
         return output_dir / rel_path
 
@@ -495,7 +495,7 @@ def clean_marker_folder(
     for csv_file in csv_files:
         out_path = get_output_path(csv_file)
 
-        # 确保输出目录存在
+        # Ensure output directory exists
         if out_path is not None:
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
