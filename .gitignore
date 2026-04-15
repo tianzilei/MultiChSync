@@ -122,7 +122,7 @@ debug*.md       # All debug files
 # Output directories
 convert/
 snirf_output/
-quality/
+Data/quality/
 quality_metadata/
 marker_reports/
 cleaned/
