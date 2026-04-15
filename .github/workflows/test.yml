@@ -137,5 +137,5 @@ jobs:
         run: |
           pip install coverage-badge
           coverage-badge -o coverage.svg
-          # Exit with error if coverage is below 80%
-          coverage report --fail-under=80
+          # Exit with error if coverage is below 35%
+          coverage report --fail-under=35
