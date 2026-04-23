@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from typing import Union, Optional, List, Dict, Tuple
+import logging
 
 # =========================================================
 # Configuration
@@ -523,6 +524,81 @@ def _find_files_by_exact_stem(
     return results
 
 
+def match_data_with_marker(
+    data_files: List[Dict], marker_files: List[Union[str, Path]]
+) -> Dict[Path, Optional[Path]]:
+    """
+    Match data files with marker files based on filename stems.
+
+    Implements filename matching rules:
+    1. Remove file extensions
+    2. For marker files: remove '_input_marker' suffix if present, otherwise remove '_marker' suffix
+    3. For ECG data files: remove '_input' suffix if present
+    4. Case-insensitive exact stem matching
+
+    Args:
+        data_files: List of dictionaries from scan_data_files(), each must have
+            'file_path' key (Path object).
+        marker_files: List of paths to marker CSV files (str or Path).
+
+    Returns:
+        Dictionary mapping data file path to marker file path (or None if no match).
+        Ambiguous matches (multiple possible matches) are logged as warnings and
+        mapped to None.
+
+    Examples:
+        >>> data_files = [{'file_path': Path('sub-001_ses-01_task-rest_fnirs.snirf')}]
+        >>> marker_files = [Path('sub-001_ses-01_task-rest_fnirs_marker.csv')]
+        >>> match_data_with_marker(data_files, marker_files)
+        {Path('sub-001_ses-01_task-rest_fnirs.snirf'): Path('sub-001_ses-01_task-rest_fnirs_marker.csv')}
+    """
+    # Convert marker files to Path objects
+    marker_paths = [Path(m) if isinstance(m, str) else m for m in marker_files]
+
+    # Preprocess marker stems: remove extension and suffix
+    marker_stems = {}
+    for mp in marker_paths:
+        stem = mp.stem
+        # Remove '_input_marker' suffix first (13 chars), then '_marker' suffix (7 chars)
+        if stem.endswith('_input_marker'):
+            stem = stem[:-13]  # Remove '_input_marker' suffix
+        elif stem.endswith('_marker'):
+            stem = stem[:-7]  # Remove '_marker' suffix
+        marker_stems[mp] = stem.lower()
+
+    # Build mapping
+    mapping = {}
+    for data_info in data_files:
+        data_path = data_info['file_path']
+        data_stem = data_path.stem
+
+        # For ECG data files: if stem ends with '_input', remove that suffix (6 chars)
+        if data_stem.endswith('_input'):
+            data_stem = data_stem[:-6]
+
+        data_stem_lower = data_stem.lower()
+
+        # Find matching marker files
+        matches = []
+        for mp, marker_stem in marker_stems.items():
+            if marker_stem == data_stem_lower:
+                matches.append(mp)
+
+        if len(matches) == 1:
+            mapping[data_path] = matches[0]
+        elif len(matches) > 1:
+            logging.warning(
+                f"Ambiguous match for data file {data_path.name}: "
+                f"multiple marker files {[m.name for m in matches]}. "
+                f"Mapping to None."
+            )
+            mapping[data_path] = None
+        else:
+            mapping[data_path] = None
+
+    return mapping
+
+
 def find_data_files_for_marker(marker_filename: str) -> List[Path]:
     """
     Find possible corresponding data files for a marker file, in priority order.
@@ -802,6 +878,106 @@ def get_data_file_duration(data_file: Path) -> Optional[float]:
 
     return None
 
+def scan_data_files(base_dir: Optional[Union[str, Path]] = None) -> List[Dict]:
+    """
+    Scan Data/convert/ and Data/raw/ directories recursively for supported data files.
+
+    Supported file extensions per modality:
+    - fNIRS: .snirf, .TXT, .txt
+    - EEG: .set, .vhdr, .edf, .eeg, .fdt
+    - ECG: .csv, .acq, .ACQ
+
+    For each file with supported extension, collect metadata:
+    - file_path: absolute Path
+    - file_name: filename only
+    - stem: stem (filename without extension)
+    - device: inferred from path using infer_device_from_path(file_path)
+    - subject_id, session_label, sequence_id, project, filename_style: from parse_filename(file_name)
+    - duration_sec: call get_data_file_duration(file_path) (may be None)
+
+    Args:
+        base_dir: Base directory to scan. If None, uses current working directory (Path.cwd()).
+
+    Returns:
+        List of dictionaries with metadata for each data file, sorted by file_path.
+
+    Examples:
+        >>> files = scan_data_files("/path/to/project")
+        >>> len(files)
+        5
+        >>> files[0]["device"]
+        'fnirs'
+    """
+    if base_dir is None:
+        base_dir = Path.cwd()
+    base_dir = Path(base_dir)
+
+    # Mapping of device to supported extensions (case-insensitive)
+    device_extensions = {
+        "fnirs": {".snirf", ".txt"},
+        "eeg": {".set", ".vhdr", ".edf", ".eeg", ".fdt"},
+        "ecg": {".csv", ".acq"},
+    }
+    # All supported extensions (lowercase for comparison)
+    all_extensions = {ext for exts in device_extensions.values() for ext in exts}
+    # Also include uppercase variants for .TXT and .ACQ
+    all_extensions.add(".txt")  # already lowercase
+    all_extensions.add(".acq")
+    # We'll handle case-insensitive matching by converting extension to lowercase
+
+    # Directories to scan relative to base_dir
+    scan_dirs = [
+        base_dir / "Data" / "convert",
+        base_dir / "Data" / "raw",
+    ]
+
+    results = []
+
+    for scan_dir in scan_dirs:
+        if not scan_dir.exists():
+            continue
+
+        # Recursively iterate over all files in scan_dir
+        for file_path in scan_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            # Skip hidden files and system directories
+            if any(part.startswith(".") or part == "__MACOSX" for part in file_path.parts):
+                continue
+
+            # Check extension (case-insensitive)
+            ext = file_path.suffix.lower()
+            # Special handling for .TXT (uppercase) and .ACQ (uppercase)
+            # Convert to lowercase for matching
+            if ext not in all_extensions:
+                continue
+
+            # Parse filename metadata
+            meta = parse_filename(file_path.name)
+            # Infer device from path (overrides filename-based inference)
+            device = infer_device_from_path(file_path)
+
+            # Get duration (may be None)
+            duration_sec = get_data_file_duration(file_path)
+
+            results.append({
+                "file_path": file_path.resolve(),
+                "file_name": file_path.name,
+                "stem": file_path.stem,
+                "device": device,
+                "subject_id": meta["subject_id"],
+                "session_label": meta["session_label"],
+                "sequence_id": meta["sequence_id"],
+                "project": meta["project"],
+                "filename_style": meta["filename_style"],
+                "duration_sec": duration_sec,
+            })
+
+    # Sort by file_path for consistent ordering
+    results.sort(key=lambda x: x["file_path"])
+    return results
+
 
 def extract_sequence_duration(marker_filename: str) -> Optional[float]:
     """
@@ -855,6 +1031,9 @@ def extract_marker_info(
 ) -> Dict[str, Path]:
     """
     Extract metadata and statistics from marker CSV files and generate reports.
+    
+    Enhanced version: scans data directories and includes all data files in reports,
+    even those without corresponding marker files.
 
     Args:
         input_dir: Directory containing marker CSV files
@@ -872,6 +1051,17 @@ def extract_marker_info(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # -----------------------------------------------------
+    # Step 1: Scan data files from Data/convert/ and Data/raw/
+    # -----------------------------------------------------
+    # Base directory is parent of Data/ directory (assuming standard Data/ structure)
+    # input_dir is typically Data/marker, so base_dir = input_dir.parent.parent
+    base_dir = input_dir.parent.parent
+    data_files = scan_data_files(base_dir)
+    
+    # -----------------------------------------------------
+    # Step 2: Scan marker CSV files
+    # -----------------------------------------------------
     if recursive:
         csv_files = sorted(input_dir.rglob("*.csv"))
     else:
@@ -890,21 +1080,89 @@ def extract_marker_info(
         f for f in csv_files if not str(f.resolve()).startswith(str(output_dir_abs))
     ]
 
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in: {input_dir}")
-
     # -----------------------------------------------------
-    # Per-file extraction
+    # Step 3: Match data files with marker files
+    # -----------------------------------------------------
+    mapping = match_data_with_marker(data_files, csv_files)
+    
+    # Track which marker files have been matched
+    matched_marker_files = set()
+    for marker_path in mapping.values():
+        if marker_path is not None:
+            matched_marker_files.add(marker_path.resolve())
+    
+    # -----------------------------------------------------
+    # Step 4: Process data files (with or without markers)
     # -----------------------------------------------------
     file_rows = []
     errors = []
 
+    for data_info in data_files:
+        data_path = data_info["file_path"]
+        
+        try:
+            # Get metadata from scan_data_files result
+            meta = parse_filename(data_info["file_name"])
+            device = data_info["device"]
+            duration_sec = data_info["duration_sec"]
+            
+            # Check if this data file has a matching marker file
+            marker_path = mapping.get(data_path)
+            
+            if marker_path is not None and marker_path.exists():
+                # Data file has matching marker file
+                try:
+                    df = safe_read_csv(marker_path)
+                    metrics = compute_marker_metrics(df, marker_path)
+                    n_markers = metrics["n_markers"]
+                except Exception as e:
+                    # Marker file exists but cannot be read
+                    errors.append({
+                        "file_path": str(marker_path),
+                        "file_name": marker_path.name,
+                        "error": f"Failed to read marker file: {e}"
+                    })
+                    n_markers = 0
+            else:
+                # Data file has no matching marker file
+                n_markers = 0
+            
+            # Use data file duration if available
+            sequence_duration = None
+            if duration_sec is not None:
+                sequence_duration = round(duration_sec, 2)
+            
+            row = {
+                "file_name": data_info["file_name"],
+                "device": device,
+                "subject_id": meta["subject_id"],
+                "sequence_id": meta["sequence_id"],
+                "n_markers": n_markers,
+                "sequence_duration": sequence_duration if sequence_duration is not None else "",
+            }
+            file_rows.append(row)
+            
+        except Exception as e:
+            errors.append({
+                "file_path": str(data_path),
+                "file_name": data_path.name,
+                "error": f"Failed to process data file: {e}"
+            })
+
+    # -----------------------------------------------------
+    # Step 5: Process unmatched marker files (backward compatibility)
+    # -----------------------------------------------------
     for csv_path in csv_files:
         # Skip files in 'info' directories (report files from previous runs)
         if "info" in csv_path.parts:
             continue
-
+            
+        # Skip marker files that were already matched to data files
+        if csv_path.resolve() in matched_marker_files:
+            continue
+            
         try:
+            # This marker file has no matching data file - use original logic
             meta = parse_filename(csv_path.name)
             df = safe_read_csv(csv_path)
             metrics = compute_marker_metrics(df, csv_path)
@@ -949,11 +1207,14 @@ def extract_marker_info(
                 }
             )
 
+    # -----------------------------------------------------
+    # Step 6: Generate reports
+    # -----------------------------------------------------
     per_file_df = pd.DataFrame(file_rows)
     error_df = pd.DataFrame(errors)
 
     if per_file_df.empty:
-        raise RuntimeError("No valid marker CSV files were parsed successfully.")
+        raise RuntimeError("No valid files were parsed successfully.")
 
     # -----------------------------------------------------
     # Save error report
@@ -981,7 +1242,10 @@ def extract_marker_info(
 
     print("=" * 60)
     print("Marker information extraction completed")
-    print(f"Valid files      : {len(per_file_df)}")
+    print(f"Total files      : {len(per_file_df)}")
+    print(f"  Data files     : {len(data_files)}")
+    print(f"  Marker files   : {len(csv_files)}")
+    print(f"  Matched pairs  : {len([m for m in mapping.values() if m is not None])}")
     print(f"Subjects         : {per_file_df['subject_id'].dropna().nunique()}")
     print(f"Error files      : {len(error_df)}")
     print(f"Subject reports  : {len(subject_reports)}")

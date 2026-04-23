@@ -35,6 +35,14 @@ from .matchcrop_aligned import (
     rename_bids_task,
 )
 
+from .adjust_offsets import (
+    adjust_offsets,
+    parse_offset_spec,
+    load_and_adjust_metadata,
+    rebuild_timeline,
+    generate_diff_report,
+)
+
 __all__ = [
     "extract_biopac_marker",
     "extract_brainvision_marker",
@@ -56,4 +64,9 @@ __all__ = [
     "calculate_aligned_time_range",
     "apply_drift_correction",
     "rename_bids_task",
+    "adjust_offsets",
+    "parse_offset_spec",
+    "load_and_adjust_metadata",
+    "rebuild_timeline",
+    "generate_diff_report",
 ]

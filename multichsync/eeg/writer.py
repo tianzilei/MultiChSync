@@ -85,7 +85,8 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
                    output_path: Union[str, Path],
                    export_format: ExportFormat = "BrainVision",
                    overwrite: bool = False,
-                   verbose: Optional[bool] = None) -> str:
+                   verbose: Optional[bool] = None,
+                   sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入文件
     
@@ -101,6 +102,8 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        目标采样率（Hz），默认None（保持原始采样率）
         
     Returns
     -------
@@ -140,7 +143,8 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
 def write_eeg_to_brainvision(raw: 'mne.io.BaseRaw',
                              output_path: Union[str, Path],
                              overwrite: bool = False,
-                             verbose: Optional[bool] = None) -> str:
+                             verbose: Optional[bool] = None,
+                             sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入BrainVision格式
     
@@ -154,6 +158,8 @@ def write_eeg_to_brainvision(raw: 'mne.io.BaseRaw',
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        目标采样率（Hz），默认None（保持原始采样率）
         
     Returns
     -------
@@ -165,14 +171,16 @@ def write_eeg_to_brainvision(raw: 'mne.io.BaseRaw',
         output_path=output_path,
         export_format="BrainVision",
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
 
 
 def write_eeg_to_eeglab(raw: 'mne.io.BaseRaw',
                         output_path: Union[str, Path],
                         overwrite: bool = False,
-                        verbose: Optional[bool] = None) -> str:
+                        verbose: Optional[bool] = None,
+                        sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入EEGLAB格式
     
@@ -186,6 +194,8 @@ def write_eeg_to_eeglab(raw: 'mne.io.BaseRaw',
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        目标采样率（Hz），默认None（保持原始采样率）
         
     Returns
     -------
@@ -197,14 +207,16 @@ def write_eeg_to_eeglab(raw: 'mne.io.BaseRaw',
         output_path=output_path,
         export_format="EEGLAB",
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
 
 
 def write_eeg_to_edf(raw: 'mne.io.BaseRaw',
-                     output_path: Union[str, Path],
-                     overwrite: bool = False,
-                     verbose: Optional[bool] = None) -> str:
+                      output_path: Union[str, Path],
+                      overwrite: bool = False,
+                      verbose: Optional[bool] = None,
+                      sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入EDF格式
     
@@ -218,6 +230,8 @@ def write_eeg_to_edf(raw: 'mne.io.BaseRaw',
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        目标采样率（Hz），默认None（保持原始采样率）
         
     Returns
     -------
@@ -229,5 +243,6 @@ def write_eeg_to_edf(raw: 'mne.io.BaseRaw',
         output_path=output_path,
         export_format="EDF",
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )

@@ -19,7 +19,8 @@ def convert_eeg_format(file_path: Union[str, Path],
                        output_path: Optional[Union[str, Path]] = None,
                        preload: bool = False,
                        overwrite: bool = False,
-                       verbose: Optional[bool] = None) -> Tuple['mne.io.BaseRaw', str]:
+                       verbose: Optional[bool] = None,
+                       sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     转换EEG文件格式
     
@@ -37,6 +38,8 @@ def convert_eeg_format(file_path: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
         
     Returns
     -------
@@ -48,6 +51,10 @@ def convert_eeg_format(file_path: Union[str, Path],
     # Read EEG file
     parsed = read_eeg_file(file_path, preload=preload, verbose=verbose)
     raw = parsed['raw']
+    
+    # Resample if sampling_rate is provided and different from original by more than 0.1 Hz
+    if sampling_rate is not None and abs(raw.info['sfreq'] - sampling_rate) > 0.1:
+        raw = raw.resample(sampling_rate, npad='auto')
     
     # Determine output path
     if output_path is None:
@@ -77,7 +84,8 @@ def convert_eeg_format(file_path: Union[str, Path],
         output_path=output_path,
         export_format=export_format,
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
     
     return raw, output_file
@@ -87,7 +95,8 @@ def convert_eeg_to_brainvision(file_path: Union[str, Path],
                                output_path: Optional[Union[str, Path]] = None,
                                preload: bool = False,
                                overwrite: bool = False,
-                               verbose: Optional[bool] = None) -> Tuple['mne.io.BaseRaw', str]:
+                               verbose: Optional[bool] = None,
+                               sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为BrainVision格式
     
@@ -103,6 +112,8 @@ def convert_eeg_to_brainvision(file_path: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
         
     Returns
     -------
@@ -115,7 +126,8 @@ def convert_eeg_to_brainvision(file_path: Union[str, Path],
         output_path=output_path,
         preload=preload,
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
 
 
@@ -123,7 +135,8 @@ def convert_eeg_to_eeglab(file_path: Union[str, Path],
                           output_path: Optional[Union[str, Path]] = None,
                           preload: bool = False,
                           overwrite: bool = False,
-                          verbose: Optional[bool] = None) -> Tuple['mne.io.BaseRaw', str]:
+                          verbose: Optional[bool] = None,
+                          sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为EEGLAB格式
     
@@ -139,6 +152,8 @@ def convert_eeg_to_eeglab(file_path: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
         
     Returns
     -------
@@ -151,7 +166,8 @@ def convert_eeg_to_eeglab(file_path: Union[str, Path],
         output_path=output_path,
         preload=preload,
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
 
 
@@ -159,7 +175,8 @@ def convert_eeg_to_edf(file_path: Union[str, Path],
                        output_path: Optional[Union[str, Path]] = None,
                        preload: bool = False,
                        overwrite: bool = False,
-                       verbose: Optional[bool] = None) -> Tuple['mne.io.BaseRaw', str]:
+                       verbose: Optional[bool] = None,
+                       sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为EDF格式
     
@@ -175,6 +192,8 @@ def convert_eeg_to_edf(file_path: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
         
     Returns
     -------
@@ -187,7 +206,8 @@ def convert_eeg_to_edf(file_path: Union[str, Path],
         output_path=output_path,
         preload=preload,
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )
 
 
@@ -196,7 +216,8 @@ def convert_eeg_to_format(file_path: Union[str, Path],
                           output_path: Optional[Union[str, Path]] = None,
                           preload: bool = False,
                           overwrite: bool = False,
-                          verbose: Optional[bool] = None) -> Tuple['mne.io.BaseRaw', str]:
+                          verbose: Optional[bool] = None,
+                          sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     通用转换函数，支持多种输出格式
     
@@ -214,6 +235,8 @@ def convert_eeg_to_format(file_path: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
         
     Returns
     -------
@@ -231,5 +254,6 @@ def convert_eeg_to_format(file_path: Union[str, Path],
         output_path=output_path,
         preload=preload,
         overwrite=overwrite,
-        verbose=verbose
+        verbose=verbose,
+        sampling_rate=sampling_rate
     )

@@ -167,6 +167,7 @@ def eeg_convert(args):
             preload=args.preload,
             overwrite=args.overwrite,
             verbose=args.verbose,
+            sampling_rate=args.sampling_rate,
         )
         print(f"转换成功: {output_path}")
         print(f"通道数: {len(raw.ch_names)}, 采样率: {raw.info['sfreq']} Hz")
@@ -187,6 +188,7 @@ def eeg_batch(args):
             overwrite=args.overwrite,
             verbose=args.verbose,
             recursive=args.recursive,
+            sampling_rate=args.sampling_rate,
         )
 
         print(f"批量转换完成，共 {len(results)} 个文件")
@@ -834,6 +836,50 @@ def marker_matchcrop_aligned(args):
         sys.exit(1)
 
 
+def marker_adjust_offsets(args):
+    """处理adjust-offsets命令 - 调整设备偏移量并重新生成匹配时间线"""
+    from pathlib import Path
+    from multichsync.marker import adjust_offsets, parse_offset_spec
+    
+    try:
+        json_path = Path(args.json_path)
+        
+        if not json_path.exists():
+            raise FileNotFoundError(f"Metadata JSON文件不存在: {json_path}")
+        
+        # 解析偏移量
+        offsets = parse_offset_spec(args.offsets)
+        
+        if not offsets:
+            print("警告: 未指定任何偏移量，将使用原始偏移量")
+        
+        # 运行调整
+        result = adjust_offsets(
+            json_path=json_path,
+            offsets=offsets,
+            output_dir=Path(args.output_dir),
+            output_prefix=args.prefix,
+            add_to_existing=args.add,
+            method=args.method,
+            sigma_time_s=args.sigma_time,
+            max_time_diff_s=args.max_time_diff
+        )
+        
+        print(f"偏移量调整完成!")
+        print(f"  输出目录: {args.output_dir}")
+        print(f"  时间线文件: {result['output_files']['timeline_csv']}")
+        print(f"  元数据文件: {result['output_files']['metadata_json']}")
+        if result['output_files']['diff_report']:
+            print(f"  差异报告: {result['output_files']['diff_report']}")
+        print(f"  调整的设备数: {len(result['adjusted_devices'])}")
+        
+    except Exception as e:
+        print(f"偏移量调整失败: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def quality_assess(args):
     """处理SNIRF文件质量评估命令"""
     try:
@@ -1384,6 +1430,15 @@ def main():
     eeg_convert_parser.add_argument(
         "--verbose", action="store_true", help="显示详细输出"
     )
+    eeg_convert_parser.add_argument(
+        "--sampling-rate",
+        "-s",
+        nargs="?",
+        const=250.0,
+        default=None,
+        type=float,
+        help="目标采样率（Hz，默认：None（保持原采样率），使用--sampling-rate不带参数时默认为250Hz）",
+    )
     eeg_convert_parser.set_defaults(func=eeg_convert)
 
     # eeg batch
@@ -1410,6 +1465,15 @@ def main():
     eeg_batch_parser.add_argument("--verbose", action="store_true", help="显示详细输出")
     eeg_batch_parser.add_argument(
         "--recursive", "-r", action="store_true", help="递归搜索子目录"
+    )
+    eeg_batch_parser.add_argument(
+        "--sampling-rate",
+        "-s",
+        nargs="?",
+        const=250.0,
+        default=None,
+        type=float,
+        help="目标采样率（Hz，默认：None（保持原采样率），使用--sampling-rate不带参数时默认为250Hz）",
     )
     eeg_batch_parser.set_defaults(func=eeg_batch)
 
@@ -1669,6 +1733,46 @@ def main():
         "--taskname", "-t", required=True, help="输出文件的新task名称（必填）"
     )
     marker_matchcrop_aligned_parser.set_defaults(func=marker_matchcrop_aligned)
+
+    # marker adjust-offsets subcommand - added to marker subparser
+    marker_adjust_offsets_parser = marker_subparsers.add_parser(
+        "adjust-offsets",
+        help="调整设备偏移量并重新生成匹配时间线"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--json-path", "-j", required=True,
+        help="matched_metadata.json文件路径"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--offsets", "-o", required=True,
+        help="偏移量规格：'设备1:1.5,设备2:-0.3' 或 JSON文件路径"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--output-dir", "-d", required=True,
+        help="输出目录路径"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--prefix", "-p", default="adjusted",
+        help="输出文件前缀（默认：adjusted）"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--add", action="store_true",
+        help="将偏移量添加到现有偏移量而不是替换"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--method", "-m", default="hungarian",
+        choices=["hungarian", "mincostflow", "sinkhorn"],
+        help="匹配方法（默认：hungarian）"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--sigma-time", type=float, default=0.75,
+        help="置信度计算的高斯sigma（默认：0.75）"
+    )
+    marker_adjust_offsets_parser.add_argument(
+        "--max-time-diff", type=float, default=3.0,
+        help="匹配的最大时间差（默认：3.0）"
+    )
+    marker_adjust_offsets_parser.set_defaults(func=marker_adjust_offsets)
 
     # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")

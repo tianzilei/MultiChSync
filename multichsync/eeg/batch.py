@@ -19,6 +19,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                              preload: bool = False,
                              overwrite: bool = False,
                              verbose: Optional[bool] = None,
+                             sampling_rate: Optional[float] = None,
                              recursive: bool = False) -> List[Tuple[str, str]]:
     """
     批量转换EEG文件格式
@@ -37,9 +38,11 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
         是否覆盖已存在的文件，默认False
     verbose : bool, optional
         是否显示详细输出
+    sampling_rate : float, optional
+        重采样频率（Hz），如果为None则保持原始采样率，默认None
     recursive : bool, optional
         是否递归搜索子目录，默认False
-        
+
     Returns
     -------
     list
@@ -130,7 +133,8 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                 output_path=output_file,
                 preload=preload,
                 overwrite=overwrite,
-                verbose=verbose
+                verbose=verbose,
+                sampling_rate=sampling_rate
             )
             
             converted_files.append((str(input_file), output_path))

@@ -150,6 +150,158 @@ class TestConvertEegFormat:
         call_args = mock_write.call_args
         assert "output_path" in call_args.kwargs
 
+    @patch("multichsync.eeg.converter.read_eeg_file")
+    @patch("multichsync.eeg.converter.write_eeg_file")
+    def test_resampling_500hz_to_250hz(self, mock_write, mock_read, tmp_path):
+        """Test resampling from 500Hz to 250Hz"""
+        # Setup mock raw object with 500Hz sampling rate
+        mock_raw = MagicMock()
+        mock_raw.ch_names = ["Ch1", "Ch2"]
+        mock_raw.info = {"sfreq": 500.0}
+        mock_raw.n_times = 1000
+        mock_raw.times = [i / 500 for i in range(1000)]
+        mock_raw.annotations = MagicMock()
+        mock_raw.annotations.__len__ = MagicMock(return_value=0)
+        
+        # Create a mock resampled raw object
+        mock_resampled = MagicMock()
+        mock_resampled.ch_names = ["Ch1", "Ch2"]
+        mock_resampled.info = {"sfreq": 250.0}
+        mock_resampled.n_times = 500
+        mock_resampled.times = [i / 250 for i in range(500)]
+        mock_resampled.annotations = MagicMock()
+        mock_resampled.annotations.__len__ = MagicMock(return_value=0)
+        
+        # Mock the resample method
+        mock_raw.resample = MagicMock(return_value=mock_resampled)
+        
+        # Setup mock parsed result
+        mock_read.return_value = {
+            "raw": mock_raw,
+            "format": "eeglab",
+            "file_path": str(tmp_path / "test.set"),
+            "metadata": {"n_channels": 2, "sfreq": 500.0},
+            "channels": [],
+        }
+        
+        # Setup mock write
+        mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
+        
+        # Create test input file
+        input_file = tmp_path / "test.set"
+        input_file.touch()
+        
+        # Call the function with sampling_rate=250
+        result_raw, result_path = convert_eeg_format(
+            file_path=str(input_file),
+            export_format="BrainVision",
+            output_path=str(tmp_path / "output.vhdr"),
+            sampling_rate=250.0,
+        )
+        
+        # Verify resample was called with 250Hz
+        mock_raw.resample.assert_called_once_with(250.0, npad='auto')
+        
+        # Verify write was called with resampled raw
+        call_args = mock_write.call_args
+        assert call_args.kwargs["raw"] is mock_resampled
+        assert call_args.kwargs["sampling_rate"] == 250.0
+
+    @patch("multichsync.eeg.converter.read_eeg_file")
+    @patch("multichsync.eeg.converter.write_eeg_file")
+    def test_no_resampling_when_none(self, mock_write, mock_read, tmp_path):
+        """Test no resampling when sampling_rate is None"""
+        # Setup mock raw object
+        mock_raw = MagicMock()
+        mock_raw.ch_names = ["Ch1", "Ch2"]
+        mock_raw.info = {"sfreq": 500.0}
+        mock_raw.n_times = 1000
+        mock_raw.times = [i / 500 for i in range(1000)]
+        mock_raw.annotations = MagicMock()
+        mock_raw.annotations.__len__ = MagicMock(return_value=0)
+        
+        # Mock the resample method (should not be called)
+        mock_raw.resample = MagicMock()
+        
+        # Setup mock parsed result
+        mock_read.return_value = {
+            "raw": mock_raw,
+            "format": "eeglab",
+            "file_path": str(tmp_path / "test.set"),
+            "metadata": {"n_channels": 2, "sfreq": 500.0},
+            "channels": [],
+        }
+        
+        # Setup mock write
+        mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
+        
+        # Create test input file
+        input_file = tmp_path / "test.set"
+        input_file.touch()
+        
+        # Call the function without sampling_rate (default None)
+        result_raw, result_path = convert_eeg_format(
+            file_path=str(input_file),
+            export_format="BrainVision",
+            output_path=str(tmp_path / "output.vhdr"),
+        )
+        
+        # Verify resample was NOT called
+        mock_raw.resample.assert_not_called()
+        
+        # Verify write was called with original raw
+        call_args = mock_write.call_args
+        assert call_args.kwargs["raw"] is mock_raw
+        assert call_args.kwargs.get("sampling_rate") is None
+
+    @patch("multichsync.eeg.converter.read_eeg_file")
+    @patch("multichsync.eeg.converter.write_eeg_file")
+    def test_no_resampling_within_tolerance(self, mock_write, mock_read, tmp_path):
+        """Test no resampling when rates are equal within 0.1 Hz tolerance"""
+        # Setup mock raw object with 250.05 Hz sampling rate
+        mock_raw = MagicMock()
+        mock_raw.ch_names = ["Ch1", "Ch2"]
+        mock_raw.info = {"sfreq": 250.05}
+        mock_raw.n_times = 1000
+        mock_raw.times = [i / 250.05 for i in range(1000)]
+        mock_raw.annotations = MagicMock()
+        mock_raw.annotations.__len__ = MagicMock(return_value=0)
+        
+        # Mock the resample method (should not be called)
+        mock_raw.resample = MagicMock()
+        
+        # Setup mock parsed result
+        mock_read.return_value = {
+            "raw": mock_raw,
+            "format": "eeglab",
+            "file_path": str(tmp_path / "test.set"),
+            "metadata": {"n_channels": 2, "sfreq": 250.05},
+            "channels": [],
+        }
+        
+        # Setup mock write
+        mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
+        
+        # Create test input file
+        input_file = tmp_path / "test.set"
+        input_file.touch()
+        
+        # Call the function with sampling_rate=250.0 (difference 0.05 < 0.1)
+        result_raw, result_path = convert_eeg_format(
+            file_path=str(input_file),
+            export_format="BrainVision",
+            output_path=str(tmp_path / "output.vhdr"),
+            sampling_rate=250.0,
+        )
+        
+        # Verify resample was NOT called (difference within tolerance)
+        mock_raw.resample.assert_not_called()
+        
+        # Verify write was called with original raw
+        call_args = mock_write.call_args
+        assert call_args.kwargs["raw"] is mock_raw
+        assert call_args.kwargs["sampling_rate"] == 250.0
+
 
 class TestBatchConvertEegFormat:
     """Test suite for batch_convert_eeg_format function"""
@@ -282,6 +434,47 @@ class TestBatchConvertEegFormat:
         assert mock_convert.called
         call_args = mock_convert.call_args
         assert call_args.kwargs["export_format"] == "EEGLAB"
+
+    @patch("multichsync.eeg.batch.convert_eeg_format")
+    def test_batch_with_sampling_rate(self, mock_convert, tmp_path):
+        """Test batch conversion with sampling_rate parameter"""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+
+        # Create test file
+        test_file = input_dir / "test.set"
+        test_file.touch()
+
+        # Setup mock
+        mock_raw = MagicMock()
+        mock_raw.ch_names = ["Ch1"]
+        mock_raw.info = {"sfreq": 500}
+        mock_raw.n_times = 100
+        mock_raw.times = [i / 500 for i in range(100)]
+        mock_raw.annotations = MagicMock()
+        mock_raw.annotations.__len__ = MagicMock(return_value=0)
+
+        def mock_convert_side_effect(
+            file_path, export_format, output_path=None, **kwargs
+        ):
+            # Verify sampling_rate is passed in kwargs
+            assert "sampling_rate" in kwargs
+            assert kwargs["sampling_rate"] == 250.0
+            return mock_raw, str(output_path) if output_path else "/fake/output.vhdr"
+
+        mock_convert.side_effect = mock_convert_side_effect
+
+        # Call batch conversion with sampling_rate
+        result = batch_convert_eeg_format(
+            input_dir=str(input_dir),
+            export_format="BrainVision",
+            sampling_rate=250.0,
+        )
+
+        # Verify conversion was called
+        assert mock_convert.called
+        call_args = mock_convert.call_args
+        assert call_args.kwargs["sampling_rate"] == 250.0
 
     @patch("multichsync.eeg.batch.convert_eeg_format")
     def test_batch_nonexistent_directory(self, mock_convert, tmp_path):
