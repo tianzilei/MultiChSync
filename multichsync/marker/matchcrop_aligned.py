@@ -277,8 +277,8 @@ def save_crop_metadata(
 
 def matchcrop_aligned(
     json_path,
-    start_time: Optional[float] = None,
-    end_time: Optional[float] = None,
+    start_time: float,
+    end_time: float,
     taskname: str = None,
 ) -> Dict:
     """
@@ -286,8 +286,8 @@ def matchcrop_aligned(
 
     This function:
     1. Reads matched_metadata.json to get device info and aligned timeline
-    2. Calculates aligned time range using consensus_time_range
-    3. Allows user to override times or uses aligned range endpoints
+    2. Calculates aligned time range using consensus_time_range for validation
+    3. Uses user-provided start_time and end_time (required)
     4. Crops each device's raw data using drift-corrected time ranges
     5. Renames output files with new task name
     6. Saves to JSON's parent directory
@@ -296,10 +296,10 @@ def matchcrop_aligned(
     -----------
     json_path : str or Path
         Path to matched_metadata.json
-    start_time : float, optional
-        Start time in consensus timeline. If None, uses consensus_time_range[0]
-    end_time : float, optional
-        End time in consensus timeline. If None, uses consensus_time_range[1]
+    start_time : float
+        Start time in consensus timeline (required)
+    end_time : float
+        End time in consensus timeline (required)
     taskname : str
         New task name for output files (required)
 
@@ -327,16 +327,21 @@ def matchcrop_aligned(
     with open(json_path, "r") as f:
         metadata = json.load(f)
 
-    # Calculate aligned time range
+    # Calculate aligned time range for validation
     aligned_start, aligned_end = calculate_aligned_time_range(metadata)
 
-    # Determine crop times (user input or auto-detect)
-    crop_start = start_time if start_time is not None else aligned_start
-    crop_end = end_time if end_time is not None else aligned_end
+    # Use user-provided times (required)
+    crop_start = start_time
+    crop_end = end_time
 
     # Validate time range
     if crop_start >= crop_end:
         raise ValueError(f"Invalid time range: start={crop_start} >= end={crop_end}")
+
+    # Warn if user times are outside aligned range (but allow it)
+    if crop_start < aligned_start or crop_end > aligned_end:
+        print(f"  Warning: Crop range [{crop_start:.3f}s, {crop_end:.3f}s] extends beyond aligned range [{aligned_start:.3f}s, {aligned_end:.3f}s]")
+        print(f"  This may result in missing data or errors if devices don't have data in the requested range.")
 
     # Get output directory (same as input JSON)
     output_dir = json_path.parent
@@ -430,13 +435,15 @@ def main():
         "--start-time",
         "-s",
         type=float,
-        help="Start time in consensus timeline (default: auto-detect from aligned range)",
+        required=True,
+        help="Start time in consensus timeline (required)",
     )
     parser.add_argument(
         "--end-time",
         "-e",
         type=float,
-        help="End time in consensus timeline (default: auto-detect from aligned range)",
+        required=True,
+        help="End time in consensus timeline (required)",
     )
     parser.add_argument(
         "--taskname",

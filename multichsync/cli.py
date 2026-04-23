@@ -836,10 +836,10 @@ def marker_matchcrop_aligned(args):
         sys.exit(1)
 
 
-def marker_adjust_offsets(args):
-    """处理adjust-offsets命令 - 调整设备偏移量并重新生成匹配时间线"""
+def marker_manual_match(args):
+    """处理manual-match命令 - 手动调整设备偏移量并重新生成匹配时间线"""
     from pathlib import Path
-    from multichsync.marker import adjust_offsets, parse_offset_spec
+    from multichsync.marker.adjust_offsets import adjust_offsets, parse_offset_list
     
     try:
         json_path = Path(args.json_path)
@@ -847,17 +847,20 @@ def marker_adjust_offsets(args):
         if not json_path.exists():
             raise FileNotFoundError(f"Metadata JSON文件不存在: {json_path}")
         
-        # 解析偏移量
-        offsets = parse_offset_spec(args.offsets)
+        # 解析偏移量列表（基于JSON中device_info顺序）
+        offset_list = parse_offset_list(args.offsets)
         
-        if not offsets:
+        if not offset_list:
             print("警告: 未指定任何偏移量，将使用原始偏移量")
+        
+        # 输出目录为JSON文件所在目录
+        output_dir = json_path.parent
         
         # 运行调整
         result = adjust_offsets(
             json_path=json_path,
-            offsets=offsets,
-            output_dir=Path(args.output_dir),
+            offsets=offset_list,
+            output_dir=output_dir,
             output_prefix=args.prefix,
             add_to_existing=args.add,
             method=args.method,
@@ -865,8 +868,8 @@ def marker_adjust_offsets(args):
             max_time_diff_s=args.max_time_diff
         )
         
-        print(f"偏移量调整完成!")
-        print(f"  输出目录: {args.output_dir}")
+        print(f"手动匹配完成!")
+        print(f"  输出目录: {output_dir}")
         print(f"  时间线文件: {result['output_files']['timeline_csv']}")
         print(f"  元数据文件: {result['output_files']['metadata_json']}")
         if result['output_files']['diff_report']:
@@ -874,7 +877,7 @@ def marker_adjust_offsets(args):
         print(f"  调整的设备数: {len(result['adjusted_devices'])}")
         
     except Exception as e:
-        print(f"偏移量调整失败: {e}")
+        print(f"手动匹配失败: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -1721,58 +1724,56 @@ def main():
         "--start-time",
         "-s",
         type=float,
-        help="裁剪起始时间（共识时间轴，默认：自动从对齐范围检测）",
+        required=True,
+        help="裁剪起始时间（共识时间轴，必填，例如：0.0）",
     )
     marker_matchcrop_aligned_parser.add_argument(
         "--end-time",
         "-e",
         type=float,
-        help="裁剪结束时间（共识时间轴，默认：自动从对齐范围检测）",
+        required=True,
+        help="裁剪结束时间（共识时间轴，必填，例如：300.0）",
     )
     marker_matchcrop_aligned_parser.add_argument(
         "--taskname", "-t", required=True, help="输出文件的新task名称（必填）"
     )
     marker_matchcrop_aligned_parser.set_defaults(func=marker_matchcrop_aligned)
 
-    # marker adjust-offsets subcommand - added to marker subparser
-    marker_adjust_offsets_parser = marker_subparsers.add_parser(
-        "adjust-offsets",
-        help="调整设备偏移量并重新生成匹配时间线"
+    # marker manual-match subcommand - added to marker subparser
+    marker_manual_match_parser = marker_subparsers.add_parser(
+        "manual-match",
+        help="手动调整设备偏移量并重新生成匹配时间线"
     )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--json-path", "-j", required=True,
         help="matched_metadata.json文件路径"
     )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--offsets", "-o", required=True,
-        help="偏移量规格：'设备1:1.5,设备2:-0.3' 或 JSON文件路径"
+        help="偏移量列表（基于JSON中device_info顺序）：例如 '[1.5, -0.3]' 或 JSON文件路径"
     )
-    marker_adjust_offsets_parser.add_argument(
-        "--output-dir", "-d", required=True,
-        help="输出目录路径"
+    marker_manual_match_parser.add_argument(
+        "--prefix", "-p", default="manual",
+        help="输出文件前缀（默认：manual）"
     )
-    marker_adjust_offsets_parser.add_argument(
-        "--prefix", "-p", default="adjusted",
-        help="输出文件前缀（默认：adjusted）"
-    )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--add", action="store_true",
         help="将偏移量添加到现有偏移量而不是替换"
     )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--method", "-m", default="hungarian",
         choices=["hungarian", "mincostflow", "sinkhorn"],
         help="匹配方法（默认：hungarian）"
     )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--sigma-time", type=float, default=0.75,
         help="置信度计算的高斯sigma（默认：0.75）"
     )
-    marker_adjust_offsets_parser.add_argument(
+    marker_manual_match_parser.add_argument(
         "--max-time-diff", type=float, default=3.0,
         help="匹配的最大时间差（默认：3.0）"
     )
-    marker_adjust_offsets_parser.set_defaults(func=marker_adjust_offsets)
+    marker_manual_match_parser.set_defaults(func=marker_manual_match)
 
     # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")

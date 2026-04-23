@@ -19,6 +19,8 @@ from multichsync.marker.adjust_offsets import (
     generate_diff_report,
     load_and_adjust_metadata,
     parse_offset_spec,
+    parse_offset_list,
+    map_offset_list_to_devices,
     rebuild_timeline,
 )
 
@@ -96,6 +98,140 @@ class TestParseOffsetSpec(unittest.TestCase):
                 parse_offset_spec(json_path)
         finally:
             Path(json_path).unlink()
+
+
+class TestParseOffsetList(unittest.TestCase):
+    """Test parse_offset_list function"""
+
+    def test_parse_json_array_string(self):
+        """Test parsing JSON array string"""
+        spec = "[1.5, -0.3, 0.0]"
+        result = parse_offset_list(spec)
+        self.assertEqual(result, [1.5, -0.3, 0.0])
+
+    def test_parse_comma_separated(self):
+        """Test parsing comma-separated numbers"""
+        spec = "1.5,-0.3,0.0"
+        result = parse_offset_list(spec)
+        self.assertEqual(result, [1.5, -0.3, 0.0])
+
+    def test_parse_comma_separated_with_spaces(self):
+        """Test parsing comma-separated numbers with spaces"""
+        spec = "1.5, -0.3, 0.0"
+        result = parse_offset_list(spec)
+        self.assertEqual(result, [1.5, -0.3, 0.0])
+
+    def test_parse_single_value(self):
+        """Test parsing single value"""
+        spec = "1.5"
+        result = parse_offset_list(spec)
+        self.assertEqual(result, [1.5])
+
+    def test_parse_json_file_array(self):
+        """Test parsing JSON file with array"""
+        json_content = [1.5, -0.3, 0.0]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(json_content, f)
+            json_path = f.name
+
+        try:
+            result = parse_offset_list(json_path)
+            self.assertEqual(result, [1.5, -0.3, 0.0])
+        finally:
+            Path(json_path).unlink()
+
+    def test_parse_json_file_dict(self):
+        """Test parsing JSON file with dict (returns values in order)"""
+        json_content = {"device1": 1.5, "device2": -0.3}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(json_content, f)
+            json_path = f.name
+
+        try:
+            result = parse_offset_list(json_path)
+            self.assertEqual(result, [1.5, -0.3])
+        finally:
+            Path(json_path).unlink()
+
+    def test_parse_old_format_raises_error(self):
+        """Test that old colon-based format raises helpful error"""
+        spec = "device1:1.5,device2:-0.3"
+        with self.assertRaises(ValueError) as ctx:
+            parse_offset_list(spec)
+        self.assertIn("no longer supported", str(ctx.exception))
+
+    def test_parse_empty_string(self):
+        """Test parsing empty string"""
+        result = parse_offset_list("")
+        self.assertEqual(result, [])
+
+    def test_parse_invalid_value(self):
+        """Test parsing invalid value raises ValueError"""
+        spec = "1.5,abc,3.0"
+        with self.assertRaises(ValueError):
+            parse_offset_list(spec)
+
+
+class TestMapOffsetListToDevices(unittest.TestCase):
+    """Test map_offset_list_to_devices function"""
+
+    def setUp(self):
+        self.metadata = {
+            "device_info": [
+                {"name": "device1", "file_path": "/path/to/device1.csv"},
+                {"name": "device2", "file_path": "/path/to/device2.csv"},
+                {"name": "device3", "file_path": "/path/to/device3.csv"},
+            ]
+        }
+
+    def test_map_full_list(self):
+        """Test mapping full offset list to devices"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            result = map_offset_list_to_devices([1.5, -0.3, 0.0], json_path)
+            self.assertEqual(result, {"device1": 1.5, "device2": -0.3, "device3": 0.0})
+        finally:
+            json_path.unlink()
+
+    def test_map_partial_list(self):
+        """Test mapping partial offset list (remaining devices get 0.0)"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            result = map_offset_list_to_devices([1.5], json_path)
+            self.assertEqual(result, {"device1": 1.5, "device2": 0.0, "device3": 0.0})
+        finally:
+            json_path.unlink()
+
+    def test_map_too_many_offsets(self):
+        """Test mapping too many offsets raises ValueError"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            with self.assertRaises(ValueError):
+                map_offset_list_to_devices([1.0, 2.0, 3.0, 4.0], json_path)
+        finally:
+            json_path.unlink()
+
+    def test_map_no_device_info(self):
+        """Test mapping with no device_info raises ValueError"""
+        bad_metadata = {"no_device_info": []}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bad_metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            with self.assertRaises(ValueError):
+                map_offset_list_to_devices([1.0], json_path)
+        finally:
+            json_path.unlink()
 
 
 class TestLoadAndAdjustMetadata(unittest.TestCase):

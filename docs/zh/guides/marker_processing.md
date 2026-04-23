@@ -170,6 +170,43 @@ multichsync crop batch \
   --output-dir Data/cropped
 ```
 
+### 6. 原始数据裁剪
+
+裁剪原始数据文件到匹配的时间线:
+
+```bash
+multichsync marker matchcrop \
+  --timeline-csv Data/matching/sub-001/sub-001_timeline.csv \
+  --metadata-json Data/matching/sub-001/sub-001_metadata.json \
+  --reference fnirs \
+  --output-dir Data/cropped/sub-001
+```
+
+**操作**:
+1. 在 `Data/convert/{device_type}/` 中定位原始数据文件
+2. 应用设备偏移校正
+3. 裁剪到参考设备时间范围
+4. 保存裁剪后的文件，时间重新索引从0开始
+
+### 7. 对齐裁剪与任务名称修改
+
+使用对齐时间线裁剪并可选修改任务名称:
+
+```bash
+multichsync marker matchcrop-aligned \
+  --json-path Data/matching/sub-001/sub-001_metadata.json \
+  --start-time 10.0 \
+  --end-time 300.0 \
+  --taskname "resting_state" \
+  --output-dir Data/cropped/aligned/sub-001
+```
+
+**操作**:
+1. 使用指定的 `--start-time` 和 `--end-time` (必填)，根据元数据中的共识时间范围进行验证
+2. 修改输出文件中的任务名称(用于 BIDS 兼容性)
+3. 对每个设备应用漂移校正
+4. 裁剪并保存同步文件
+
 ## Python API 用法
 
 ### 导入模块

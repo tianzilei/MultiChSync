@@ -152,6 +152,8 @@ multichsync marker match \
 ```bash
 multichsync marker matchcrop-aligned \
   --json-path Data/matching/matched_metadata.json \
+  --start-time 0.0 \
+  --end-time 300.0 \
   --taskname synchronized_task
 ```
 
@@ -166,8 +168,8 @@ multichsync marker matchcrop-aligned \
 # Crop specific time range (0 to 300 seconds)
 multichsync marker matchcrop-aligned \
   --json-path Data/matching/matched_metadata.json \
-  --start-time 0 \
-  --end-time 300 \
+  --start-time 0.0 \
+  --end-time 300.0 \
   --taskname task_first5min
 ```
 
@@ -240,6 +242,8 @@ multichsync marker match \
 echo "Step 5: Cropping aligned data..."
 multichsync marker matchcrop-aligned \
   --json-path Data/matching/matched_metadata.json \
+  --start-time 0.0 \
+  --end-time 300.0 \
   --taskname synchronized
 
 # 6. Quality assessment

@@ -38,6 +38,8 @@ from .matchcrop_aligned import (
 from .adjust_offsets import (
     adjust_offsets,
     parse_offset_spec,
+    parse_offset_list,
+    map_offset_list_to_devices,
     load_and_adjust_metadata,
     rebuild_timeline,
     generate_diff_report,
@@ -66,6 +68,8 @@ __all__ = [
     "rename_bids_task",
     "adjust_offsets",
     "parse_offset_spec",
+    "parse_offset_list",
+    "map_offset_list_to_devices",
     "load_and_adjust_metadata",
     "rebuild_timeline",
     "generate_diff_report",

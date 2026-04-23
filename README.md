@@ -76,17 +76,18 @@ multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
 # Match markers across devices
 multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching
 
+# Manually adjust device offsets and regenerate matched timeline
+multichsync marker manual-match \
+  --json-path Data/matching/matched_metadata.json \
+  --offsets "[1.5, -0.3]" \
+  --prefix manual
+
 # Crop matched data using aligned timelines
 multichsync marker matchcrop-aligned \
   --json-path Data/matching/matched_metadata.json \
+  --start-time 0.0 \
+  --end-time 300.0 \
   --taskname newtask
-
-# Adjust device offsets and regenerate matched timeline
-multichsync marker adjust-offsets \
-  --json-path Data/matching/matched_metadata.json \
-  --offsets "device1:1.5,device2:-0.3" \
-  --output-dir Data/matching/adjusted \
-  --prefix adjusted
 ```
 
 ### Quality Assessment (fNIRS)
@@ -129,68 +130,6 @@ Data/
 Install all dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-## Python API
-
-```python
-from multichsync.fnirs import convert_fnirs_to_snirf
-from multichsync.ecg import convert_acq_to_csv
-from multichsync.eeg import convert_eeg_format
-from multichsync.marker import extract_marker_info
-from multichsync.quality import process_one_snirf
-
-# fNIRS conversion
-output_path = convert_fnirs_to_snirf(
-    txt_path="data.TXT",
-    src_coords_csv="source_coordinates.csv",
-    det_coords_csv="detector_coordinates.csv",
-    output_path="output.snirf"
-)
-
-# ECG conversion with fixed sampling rate
-result = convert_acq_to_csv(
-    acq_path="data.acq",
-    output_path="./convert",
-    sampling_rate=250
-)
-
-# EEG conversion with fixed sampling rate
-raw, output_path = convert_eeg_format(
-    file_path="data.set",
-    export_format="BrainVision",
-    output_path="./convert/data.vhdr",
-    sampling_rate=250
-)
-
-# Marker information extraction (scans Data/convert/ and Data/raw/ for data files)
-reports = extract_marker_info(
-    input_dir="Data/marker",
-    output_dir="Data/marker/info"
-)
-
-# Quality assessment
-summary = process_one_snirf(
-    snirf_path="data.snirf",
-    out_dir="./quality",
-    l_freq=0.01,
-    h_freq=0.2
-)
-```
-
-## Development
-
-```bash
-# Set up development environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or venv\Scripts\activate  # Windows
-
-# Install in development mode
-pip install -e .
-
-# Run tests
-pytest tests/
 ```
 
 ## Documentation

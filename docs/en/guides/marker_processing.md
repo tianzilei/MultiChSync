@@ -199,7 +199,7 @@ multichsync marker matchcrop-aligned \
 ```
 
 **Operation**:
-1. Uses consensus time range from metadata (or specified `--start-time`/`--end-time`)
+1. Uses specified `--start-time` and `--end-time` (required), validates against consensus time range from metadata
 2. Modifies task name in output files (for BIDS compatibility)
 3. Applies drift correction to each device
 4. Crops and saves synchronized files

@@ -78,7 +78,12 @@ class TestMatchcropAlignedE2E(unittest.TestCase):
                     mock_raw.export = MagicMock()
                     mock_mne.return_value = mock_raw
 
-                    result = matchcrop_aligned(json_path=json_path, taskname="rest")
+                    result = matchcrop_aligned(
+                        json_path=json_path, 
+                        start_time=0.0,
+                        end_time=10.0,
+                        taskname="rest"
+                    )
 
             # Verify results
             self.assertEqual(result["new_taskname"], "rest")

@@ -21,9 +21,11 @@ from .matcher import (
 
 def parse_offset_spec(spec: str) -> Dict[str, float]:
     """
-    Parse offset specification string into dictionary.
+    Parse offset specification string into dictionary (deprecated).
     
     Format: "device1:1.5,device2:-0.3" or JSON file path
+    
+    Note: This function is deprecated. Use parse_offset_list instead.
     
     Parameters:
     -----------
@@ -74,6 +76,113 @@ def parse_offset_spec(spec: str) -> Dict[str, float]:
             raise ValueError(f"Invalid offset specification format: {part}. Expected 'device:offset'")
     
     return offsets
+
+
+def parse_offset_list(spec: str) -> List[float]:
+    """
+    Parse offset specification as a list of floats (based on JSON device_info order).
+    
+    Accepted formats:
+    - JSON file path containing an array: [1.5, -0.3, 0.0]
+    - JSON string representation: "[1.5, -0.3, 0.0]"
+    - Comma-separated numbers: "1.5,-0.3,0.0"
+    
+    Parameters:
+    -----------
+    spec : str
+        Offset specification string or path to JSON file
+        
+    Returns:
+    --------
+    List[float]: List of offset values
+    """
+    # Check if it's a JSON file path
+    if spec.endswith('.json'):
+        try:
+            with open(spec, 'r') as f:
+                json_data = json.load(f)
+                if isinstance(json_data, list):
+                    return [float(v) for v in json_data]
+                elif isinstance(json_data, dict):
+                    # Support dict format: keys are device names, values are offsets
+                    # Return values in dict order (Python 3.7+ preserves insertion order)
+                    return [float(v) for v in json_data.values()]
+                else:
+                    raise ValueError(f"JSON file must contain an array or dict, got {type(json_data).__name__}")
+        except Exception as e:
+            raise ValueError(f"Failed to parse JSON offset file {spec}: {e}")
+    
+    # Check for old colon-based format (deprecated)
+    if ':' in spec and not spec.strip().startswith('['):
+        raise ValueError(
+            "Colon-based offset format (e.g., 'device1:1.5') is no longer supported. "
+            "Use a list of offsets based on JSON device_info order, e.g., '[1.5, -0.3]' or '1.5,-0.3'"
+        )
+    
+    # Try parsing as JSON string (e.g., "[1.5, -0.3]")
+    spec_stripped = spec.strip()
+    if spec_stripped.startswith('['):
+        try:
+            parsed = json.loads(spec_stripped)
+            if isinstance(parsed, list):
+                return [float(v) for v in parsed]
+            else:
+                raise ValueError(f"Expected JSON array, got {type(parsed).__name__}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON offset string: {e}")
+    
+    # Parse as comma-separated numbers: "1.5,-0.3,0.0"
+    parts = spec_stripped.split(',')
+    if not parts:
+        return []
+    
+    result = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            result.append(float(part))
+        except ValueError:
+            raise ValueError(f"Invalid offset value: '{part}'. Expected a number.")
+    
+    return result
+
+
+def map_offset_list_to_devices(
+    offset_list: List[float],
+    json_path: Path
+) -> Dict[str, float]:
+    """
+    Map a list of offset values to device names based on JSON device_info order.
+    
+    Parameters:
+    -----------
+    offset_list : List[float]
+        List of offset values in device_info order
+    json_path : Path
+        Path to matched_metadata.json to read device order
+        
+    Returns:
+    --------
+    Dict[str, float]: Device name -> offset mapping
+    """
+    with open(json_path, 'r') as f:
+        metadata = json.load(f)
+    
+    device_info_list = metadata.get('device_info', [])
+    if not device_info_list:
+        raise ValueError(f"No device_info found in {json_path}")
+    
+    if len(offset_list) > len(device_info_list):
+        raise ValueError(
+            f"Too many offsets ({len(offset_list)}) for {len(device_info_list)} devices"
+        )
+    
+    return {
+        device['name']: offset_list[i] if i < len(offset_list) else 0.0
+        for i, device in enumerate(device_info_list)
+    }
 
 
 def load_and_adjust_metadata(
@@ -214,8 +323,8 @@ def rebuild_timeline(
 def adjust_offsets(
     json_path: Path,
     offsets: Dict[str, float],
-    output_dir: Path,
-    output_prefix: str = "adjusted",
+    output_dir: Optional[Path] = None,
+    output_prefix: str = "manual",
     add_to_existing: bool = False,
     method: str = "hungarian",
     sigma_time_s: float = 0.75,
@@ -229,11 +338,11 @@ def adjust_offsets(
     json_path : Path
         Path to existing matched_metadata.json
     offsets : Dict[str, float]
-        Device name -> offset mapping
-    output_dir : Path
-        Output directory for new files
+        Device name -> offset mapping (or List[float] for list-based format)
+    output_dir : Optional[Path]
+        Output directory for new files. Defaults to json_path.parent if None.
     output_prefix : str
-        Prefix for output files (default: "adjusted")
+        Prefix for output files (default: "manual")
     add_to_existing : bool
         If True, add offsets to existing offsets. If False, replace.
     method : str
@@ -246,6 +355,14 @@ def adjust_offsets(
     --------
     Dict[str, Any]: Processing results including output file paths
     """
+    # If offsets is a list, map it to device names using JSON order
+    if isinstance(offsets, list):
+        offsets = map_offset_list_to_devices(offsets, json_path)
+    
+    # Default output directory to JSON file's parent
+    if output_dir is None:
+        output_dir = json_path.parent
+    
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -393,7 +510,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Adjust device offsets and regenerate matched timeline"
+        description="Manually adjust device offsets and regenerate matched timeline"
     )
     parser.add_argument(
         "--json-path", "-j", required=True,
@@ -401,15 +518,11 @@ def main():
     )
     parser.add_argument(
         "--offsets", "-o", required=True,
-        help="Offset specification: 'device1:1.5,device2:-0.3' or path to JSON file"
+        help="Offset list (based on JSON device_info order): '[1.5, -0.3]' or JSON file path"
     )
     parser.add_argument(
-        "--output-dir", "-d", required=True,
-        help="Output directory for new files"
-    )
-    parser.add_argument(
-        "--prefix", "-p", default="adjusted",
-        help="Prefix for output files (default: adjusted)"
+        "--prefix", "-p", default="manual",
+        help="Prefix for output files (default: manual)"
     )
     parser.add_argument(
         "--add", action="store_true",
@@ -432,14 +545,13 @@ def main():
     args = parser.parse_args()
     
     try:
-        # Parse offsets
-        offsets = parse_offset_spec(args.offsets)
+        # Parse offsets as list
+        offset_list = parse_offset_list(args.offsets)
         
-        # Run adjustment
+        # Run adjustment (output dir defaults to json_path.parent)
         result = adjust_offsets(
             json_path=Path(args.json_path),
-            offsets=offsets,
-            output_dir=Path(args.output_dir),
+            offsets=offset_list,
             output_prefix=args.prefix,
             add_to_existing=args.add,
             method=args.method,
@@ -447,8 +559,7 @@ def main():
             max_time_diff_s=args.max_time_diff
         )
         
-        print(f"\nAdjustment complete!")
-        print(f"  Output directory: {args.output_dir}")
+        print(f"\nManual match complete!")
         print(f"  Timeline file: {result['output_files']['timeline_csv']}")
         print(f"  Metadata file: {result['output_files']['metadata_json']}")
         if result['output_files']['diff_report']:
