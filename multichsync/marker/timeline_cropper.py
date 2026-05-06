@@ -7,16 +7,16 @@ Crops other device timelines to match the shortest sequence's length and positio
 import json
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any, Union
 
 
 def crop_timelines_to_shortest(
-    timeline_csv: str | Path,
-    metadata_json: str | Path,
-    output_dir: str | Path | None = None,
+    timeline_csv: Union[str, Path],
+    metadata_json: Union[str, Path],
+    output_dir: Optional[Union[str, Path]] = None,
     output_prefix: str = "cropped",
     include_metadata: bool = True,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Crop device timelines to match the shortest sequence's length and position.
 

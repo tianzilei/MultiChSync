@@ -171,6 +171,23 @@ class TestParseOffsetList(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_offset_list(spec)
 
+    def test_parse_json_file_invalid_structure(self):
+        """Test parsing JSON file with non-array, non-dict content raises error"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump("not_a_list_or_dict", f)
+            json_path = f.name
+
+        try:
+            with self.assertRaises(ValueError):
+                parse_offset_list(json_path)
+        finally:
+            Path(json_path).unlink()
+
+    def test_parse_json_file_missing(self):
+        """Test parsing non-existent JSON file raises error"""
+        with self.assertRaises(ValueError):
+            parse_offset_list("/nonexistent/path.json")
+
 
 class TestMapOffsetListToDevices(unittest.TestCase):
     """Test map_offset_list_to_devices function"""
@@ -230,6 +247,31 @@ class TestMapOffsetListToDevices(unittest.TestCase):
         try:
             with self.assertRaises(ValueError):
                 map_offset_list_to_devices([1.0], json_path)
+        finally:
+            json_path.unlink()
+
+    def test_map_empty_list_all_zero(self):
+        """Test mapping empty offset list (all devices get 0.0)"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            result = map_offset_list_to_devices([], json_path)
+            self.assertEqual(result, {"device1": 0.0, "device2": 0.0, "device3": 0.0})
+        finally:
+            json_path.unlink()
+
+    def test_map_single_device(self):
+        """Test mapping with single device in metadata"""
+        meta = {"device_info": [{"name": "device1", "file_path": "/path/d1.csv"}]}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(meta, f)
+            json_path = Path(f.name)
+
+        try:
+            result = map_offset_list_to_devices([2.5], json_path)
+            self.assertEqual(result, {"device1": 2.5})
         finally:
             json_path.unlink()
 
@@ -387,6 +429,55 @@ class TestLoadAndAdjustMetadata(unittest.TestCase):
         try:
             with self.assertRaises(ValueError):
                 load_and_adjust_metadata(json_path, {}, add_to_existing=False)
+        finally:
+            json_path.unlink()
+
+    @patch("multichsync.marker.adjust_offsets.load_marker_csv_enhanced")
+    @patch("multichsync.marker.adjust_offsets.apply_drift_correction")
+    def test_load_and_adjust_device_not_in_offsets(self, mock_apply_drift, mock_load_marker):
+        """Test device not in offsets dict keeps original offset"""
+        mock_load_marker.side_effect = [self.mock_device1, self.mock_device2]
+        mock_apply_drift.side_effect = lambda ts, drift: ts + drift.offset
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.mock_metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            # Only provide offset for device1; device2 not in dict
+            offsets = {"device1": 2.0}
+            metadata, adjusted_devices = load_and_adjust_metadata(
+                json_path, offsets, add_to_existing=False
+            )
+
+            # device1 offset replaced to 2.0
+            self.assertIsNotNone(adjusted_devices[0].drift_result)
+            assert adjusted_devices[0].drift_result is not None
+            self.assertEqual(adjusted_devices[0].drift_result.offset, 2.0)
+            # device2 not in offsets → keeps original 0.5 (old_drift is read from file,
+            # but mock_device2 has .offset = -0.2)
+            self.assertIsNotNone(adjusted_devices[1].drift_result)
+            assert adjusted_devices[1].drift_result is not None
+            self.assertEqual(adjusted_devices[1].drift_result.offset, -0.2)
+        finally:
+            json_path.unlink()
+
+    @patch("multichsync.marker.adjust_offsets.load_marker_csv_enhanced")
+    def test_load_and_adjust_missing_file_path(self, mock_load_marker):
+        """Test device_info missing file_path raises ValueError"""
+        bad_metadata = {
+            "device_info": [
+                {"name": "device1"},  # No file_path
+            ]
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bad_metadata, f)
+            json_path = Path(f.name)
+
+        try:
+            with self.assertRaises(ValueError):
+                load_and_adjust_metadata(json_path, {"device1": 1.0}, add_to_existing=False)
         finally:
             json_path.unlink()
 
@@ -614,6 +705,85 @@ class TestAdjustOffsets(unittest.TestCase):
                 json_path.unlink()
 
 
+    @patch("multichsync.marker.adjust_offsets.load_and_adjust_metadata")
+    @patch("multichsync.marker.adjust_offsets.rebuild_timeline")
+    @patch("multichsync.marker.adjust_offsets.generate_diff_report")
+    @patch("multichsync.marker.adjust_offsets.map_offset_list_to_devices")
+    def test_adjust_offsets_with_list_offsets(
+        self, mock_map, mock_diff_report, mock_rebuild_timeline, mock_load_adjust
+    ):
+        """Test adjust_offsets with List[float] offsets (main CLI path)"""
+        mock_load_adjust.return_value = (
+            self.mock_metadata,
+            [self.mock_device1, self.mock_device2],
+        )
+        mock_rebuild_timeline.return_value = self.mock_timeline
+        mock_diff_report.return_value = "Diff report"
+        mock_map.return_value = {"device1": 1.5, "device2": -0.3}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.mock_metadata, f)
+            json_path = Path(f.name)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+
+            try:
+                # Pass list like the CLI does via parse_offset_list()
+                result = adjust_offsets(
+                    json_path=json_path,
+                    offsets=[1.5, -0.3],
+                    output_dir=output_dir,
+                    output_prefix="test_list",
+                )
+
+                # Verify list-to-dict conversion was called
+                mock_map.assert_called_once_with([1.5, -0.3], json_path)
+
+                # Verify outputs
+                csv_path = output_dir / "test_list_timeline.csv"
+                self.assertTrue(csv_path.exists())
+            finally:
+                json_path.unlink()
+
+    @patch("multichsync.marker.adjust_offsets.load_and_adjust_metadata")
+    @patch("multichsync.marker.adjust_offsets.rebuild_timeline")
+    @patch("multichsync.marker.adjust_offsets.generate_diff_report")
+    def test_adjust_offsets_empty_offsets(
+        self, mock_diff_report, mock_rebuild_timeline, mock_load_adjust
+    ):
+        """Test adjust_offsets with empty offsets dict"""
+        mock_load_adjust.return_value = (
+            self.mock_metadata,
+            [self.mock_device1, self.mock_device2],
+        )
+        mock_rebuild_timeline.return_value = self.mock_timeline
+        mock_diff_report.return_value = None
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(self.mock_metadata, f)
+            json_path = Path(f.name)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+
+            try:
+                result = adjust_offsets(
+                    json_path=json_path,
+                    offsets={},  # Empty offsets
+                    output_dir=output_dir,
+                    output_prefix="test_empty",
+                )
+
+                csv_path = output_dir / "test_empty_timeline.csv"
+                json_output_path = output_dir / "test_empty_metadata.json"
+                self.assertTrue(csv_path.exists())
+                self.assertTrue(json_output_path.exists())
+                self.assertEqual(result["offsets_applied"], {})
+            finally:
+                json_path.unlink()
+
+
 class TestGenerateDiffReport(unittest.TestCase):
     """Test generate_diff_report function"""
 
@@ -688,6 +858,25 @@ class TestGenerateDiffReport(unittest.TestCase):
             self.assertIn("Device: device1", report)
             self.assertIn("(no original) -> 1.000s", report)
 
+        finally:
+            original_path.unlink()
+            adjusted_path.unlink()
+
+    def test_generate_diff_report_empty_device_info(self):
+        """Test diff report when neither file has device_info"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f1:
+            json.dump({}, f1)
+            original_path = Path(f1.name)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f2:
+            json.dump({}, f2)
+            adjusted_path = Path(f2.name)
+
+        try:
+            report = generate_diff_report(original_path, adjusted_path)
+            self.assertIsNotNone(report)
+            assert report is not None
+            self.assertIn("Offset Adjustment Diff Report", report)
         finally:
             original_path.unlink()
             adjusted_path.unlink()

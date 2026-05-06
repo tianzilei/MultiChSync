@@ -739,14 +739,12 @@ def estimate_linear_drift_endpoints(
     )
     offset = t_ref_min - scale * t_dev_min
 
-    # Calculate R² using all points (simple linear regression)
+    # Calculate R² using all points
     t_dev_aligned = t_dev * scale + offset
-    residuals = (
-        t_ref.mean() - t_dev_aligned.mean()
-    )  # Not proper R², but gives indication
-    r_squared = (
-        max(0.0, 1.0 - np.var(residuals) / np.var(t_ref)) if np.var(t_ref) > 0 else 0.0
-    )
+    residuals = t_ref - t_dev_aligned
+    ss_res = np.sum(residuals ** 2)
+    ss_tot = np.sum((t_ref - np.mean(t_ref)) ** 2)
+    r_squared = max(0.0, 1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     return DriftResult(
         offset=float(offset),

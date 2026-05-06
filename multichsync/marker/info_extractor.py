@@ -266,10 +266,13 @@ def parse_filename(fname: str) -> dict:
     # Pattern A: BIDS format sub-xxx_ses-xx_task-xxx_modality
     # -----------------------------------------------------
     # examples: sub-060_ses-01_task-rest_fnirs.csv
+    #           sub-060_ses-01_task-rest_fnirs_marker.csv
+    #           sub-060_ses-01_task-rest_input_marker.csv
     #           sub-060_ses-00_task-picture_eeg.set
     #           sub-060_ses-01_task-rest_ecg.acq
+    # Note: Allow optional trailing suffixes (_marker, _input, etc.) after modality
     p_bids = re.match(
-        r"^sub-(?P<subj>\d+)_ses-(?P<ses>\d+)_task-(?P<task>\w+)_(?P<mod>\w+)$",
+        r"^sub-(?P<subj>\d+)_ses-(?P<ses>\d+)_task-(?P<task>\w+)_(?P<mod>[^_]+)",
         stem,
         flags=re.IGNORECASE,
     )

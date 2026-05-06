@@ -42,28 +42,23 @@ def find_raw_data_file(device_name: str, device_type: str) -> Optional[Path]:
     if device_type == "ecg":
         # ECG: Device name may use _input suffix (marker filename), need to map to _ecg (data filename)
         # Example: sub-071_ses-01_task-rest_input -> sub-071_ses-01_task-rest_ecg.csv
+        #   device_name="sub-071_ses-01_task-rest_input", search_name="sub-071_ses-01_task-rest_ecg"
+        # The replacement already includes the _ecg suffix, so glob WITHOUT appending another _ecg.
         search_name = device_name
         if "_input" in device_name.lower():
-            # Replace _input suffix with _ecg
             search_name = device_name.replace("_input", "_ecg")
+        else:
+            search_name = device_name.rstrip("_ecg") + "_ecg"
 
         ecg_dir = base_dir / "convert" / "ECG"
         if ecg_dir.exists():
-            # First try exact match (replaced name)
-            for f in ecg_dir.glob(f"{search_name}_ecg.csv"):
-                if f.exists():
-                    return f
-            # Then try fuzzy match (device name in filename)
+            # Try exact match: search_name already ends with _ecg, so use .csv
+            exact_csv = ecg_dir / f"{search_name}.csv"
+            if exact_csv.exists():
+                return exact_csv
+            # Fallback: fuzzy match
             for f in ecg_dir.glob("*_ecg.csv"):
                 if search_name in f.stem or device_name in f.stem:
-                    return f
-        # Alternative: directly find in marker path
-        marker_file = base_dir / "marker" / "ecg" / f"{device_name}_marker.csv"
-        if marker_file.exists():
-            # Derive original ecg data from marker file
-            ecg_dir = base_dir / "convert" / "ECG"
-            if ecg_dir.exists():
-                for f in ecg_dir.glob(f"{search_name}*_ecg.csv"):
                     return f
 
     elif device_type == "eeg":

@@ -5,8 +5,9 @@ Allows users to manually specify time offsets for each device and generate new m
 
 import json
 import re
+import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 import numpy as np
 import pandas as pd
 
@@ -322,7 +323,7 @@ def rebuild_timeline(
 
 def adjust_offsets(
     json_path: Path,
-    offsets: Dict[str, float],
+    offsets: Union[Dict[str, float], List[float]],
     output_dir: Optional[Path] = None,
     output_prefix: str = "manual",
     add_to_existing: bool = False,
