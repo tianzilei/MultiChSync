@@ -122,17 +122,13 @@ Data/
 
 ```bash
 # fNIRS: TXT to SNIRF
-multichsync fnirs batch --input-dir Data/raw/fnirs \
-  --src-coords Data/source_coordinates.csv --det-coords Data/detector_coordinates.csv \
-  --output-dir Data/convert/fnirs
+multichsync fnirs batch --input-dir Data/raw/fnirs --src-coords Data/source_coordinates.csv --det-coords Data/detector_coordinates.csv --output-dir Data/convert/fnirs
 
 # EEG: to BrainVision format (250Hz default)
-multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision \
-  --output-dir Data/convert/EEG --recursive --sampling-rate 250
+multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --output-dir Data/convert/EEG --recursive --sampling-rate 250
 
 # ECG: ACQ to CSV
-multichsync ecg batch --input-dir Data/raw/ECG \
-  --output-dir Data/convert/ECG --sampling-rate 250
+multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG --sampling-rate 250
 ```
 
 ### Step 2: Extract & Clean Markers
@@ -142,8 +138,7 @@ multichsync ecg batch --input-dir Data/raw/ECG \
 multichsync marker batch --types fnirs,ecg,eeg
 
 # Clean markers (deduplicate, filter quality, remove start marker at t=0)
-multichsync marker clean --input Data/marker --inplace \
-  --min-rows 2 --min-interval 1.0 --remove-start
+multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0 --remove-start
 
 # Generate subject-level marker reports
 multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
@@ -152,36 +147,34 @@ multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
 ### Step 3: Synchronize Markers Across Devices
 
 ```bash
-# Match markers using Hungarian algorithm (default)
-multichsync marker match --filename sub-060_ses-01_task-rest \
-  --output-dir Data/matching
+# Match markers using Hungarian algorithm (default) with BIDS wildcard files
+multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching --method hungarian
 
-# Or specify files directly
-multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg \
-  --output-dir Data/matching --method hungarian
+# Manually apply offset adjustments to matched markers
+multichsync marker manual-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --offsets "[1.5, -0.3, 0]" --output-dir Data/matching --prefix manual
 
-# Supported methods: hungarian (default), mincostflow, sinkhorn
+# Brute-force shift traversal matching (minimises mean per-marker distance)
+multichsync marker traversal-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching
+
+# Supported methods (marker match): hungarian (default), mincostflow, sinkhorn
+# Supported methods (marker traversal-match): shift traversal with gap handling
 ```
 
 ### Step 4: Crop Aligned Data
 
 ```bash
 # Crop all device data using consensus time range
-multichsync marker matchcrop-aligned \
-  --json-path Data/matching/matched_metadata.json \
-  --start-time 0.0 --end-time 300.0 --taskname synchronized_task
+multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname synchronized_task
 ```
 
 ### Step 5: Assess fNIRS Quality
 
 ```bash
 # Batch quality assessment
-multichsync quality batch --input-dir Data/convert/fnirs \
-  --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
+multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
 
 # Quality assessment with metadata written to SNIRF
-multichsync quality batch-with-metadata --input-dir Data/convert/fnirs \
-  --output-dir Data/quality
+multichsync quality batch-with-metadata --input-dir Data/convert/fnirs --output-dir Data/quality
 
 # Generate visualization plots
 multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
@@ -192,11 +185,8 @@ multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
 ```bash
 #!/bin/bash
 # 1. Convert all data
-multichsync fnirs batch --input-dir Data/raw/fnirs \
-  --src-coords Data/source_coordinates.csv \
-  --det-coords Data/detector_coordinates.csv --output-dir Data/convert/fnirs
-multichsync eeg batch --input-dir Data/raw/EEG \
-  --format BrainVision --output-dir Data/convert/EEG --recursive
+multichsync fnirs batch --input-dir Data/raw/fnirs --src-coords Data/source_coordinates.csv --det-coords Data/detector_coordinates.csv --output-dir Data/convert/fnirs
+multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --output-dir Data/convert/EEG --recursive
 multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG
 
 # 2. Extract and clean markers
@@ -207,11 +197,10 @@ multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interv
 multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
 
 # 4. Match markers
-multichsync marker match --filename sub-060_ses-01_task-rest --output-dir Data/matching
+multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching --method hungarian
 
 # 5. Crop aligned data
-multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json \
-  --start-time 0.0 --end-time 300.0 --taskname synchronized
+multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname synchronized
 
 # 6. Quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
@@ -246,32 +235,17 @@ multichsync marker extract --input Data/raw/fnirs/sub-001_task-rest_fnirs.csv --
 # Clean markers (deduplicate, filter quality, remove start marker at t=0)
 multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0 --remove-start
 
-# Match markers across devices (multiple algorithms available)
-multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg \
-  --output-dir Data/matching --method hungarian
-
-# Match by filename (auto-loads from Data/convert)
-multichsync marker match --filename sub-060_ses-01_task-rest \
-  --output-dir Data/matching
+# Match markers across devices using BIDS wildcard files (multiple algorithms available)
+multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching --method hungarian
 
 # Crop matched timeline to shortest sequence
-multichsync marker crop --timeline-csv Data/matching/matched_timeline.csv \
-  --metadata-json Data/matching/matched_metadata.json --output-prefix cropped
-
-# Manually adjust device offsets and regenerate matched timeline
-multichsync marker manual-match \
-  --json-path Data/matching/matched_metadata.json \
-  --offsets "[1.5, -0.3]" --prefix manual
+multichsync marker crop --timeline-csv Data/matching/matched_timeline.csv --metadata-json Data/matching/matched_metadata.json --output-prefix cropped
 
 # Crop matched data using aligned timelines
-multichsync marker matchcrop --timeline-csv Data/matching/matched_timeline.csv \
-  --metadata-json Data/matching/matched_metadata.json \
-  --reference sub-060_ses-01_task-rest_fnirs --output-dir Data/matchcrop
+multichsync marker matchcrop --timeline-csv Data/matching/matched_timeline.csv --metadata-json Data/matching/matched_metadata.json --reference sub-060_ses-01_task-rest_fnirs --output-dir Data/matchcrop
 
 # Crop all device data using consensus time range
-multichsync marker matchcrop-aligned \
-  --json-path Data/matching/matched_metadata.json \
-  --start-time 0.0 --end-time 300.0 --taskname newtask
+multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname newtask
 
 # Supported matching methods (use with --method):
 #   hungarian    - Hungarian algorithm (default)
@@ -279,50 +253,44 @@ multichsync marker matchcrop-aligned \
 #   sinkhorn     - Sinkhorn optimal transport
 ```
 
-### Iterative Match (Distance-Optimised)
+### Traversal Match (Brute-Force Shift Search)
 
-An alternative matching strategy that uses **iterative shift-search** instead of
-global optimisation.  It finds the alignment that minimises the **mean
-per-marker pairwise distance** across devices, and explicitly handles gaps
-where a device has no corresponding marker.
+A brute-force matching strategy that **traverses every possible alignment
+offset** (shift) between devices instead of using global optimisation. It
+finds the alignment that minimises the **mean per-marker pairwise distance**
+across devices, and explicitly handles gaps where a device has no
+corresponding marker.
 
 ```bash
-# Iterative match by filename (auto-loads from Data/convert)
-multichsync marker iterative-match --filename sub-060_ses-01_task-rest
+# Traversal match from BIDS wildcard files
+multichsync marker traversal-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --max-time-diff 2.0
 
-# Iterative match from specific marker CSV files
-multichsync marker iterative-match \
-  --input-files Data/marker/fnirs/*_marker.csv Data/marker/ecg/*_marker.csv \
-  --device-names fnirs ecg \
-  --max-time-diff 2.0
+# Traversal match from specific marker CSV files
+multichsync marker traversal-match --input-files Data/marker/fnirs/*_marker.csv Data/marker/ecg/*_marker.csv --device-names fnirs ecg --max-time-diff 2.0
 
-# Iterative match with custom parameters
-multichsync marker iterative-match --filename sub-060_ses-01_task-rest \
-  --max-time-diff 3.0 --gap-penalty 1000000 \
-  --refine-iterations 5 --random-restarts 10
+# Traversal match from a directory of marker CSVs
+multichsync marker traversal-match --input-dir Data/marker --max-time-diff 3.0 --gap-penalty 1000000 --random-restarts 10
 ```
 
 **How it works:**
 1. **Anchor** — the device with the most markers is used as the reference
-2. **Shift search** — every possible alignment offset between the anchor and each other device is evaluated
+2. **Shift traversal** — every possible alignment offset between the anchor and each other device is evaluated
 3. **Distance scoring** — each offset is scored by the mean absolute time difference across all matched pairs; gaps (unmatched markers) add a configurable penalty
-4. **Local refinement** — individual group assignments are perturbed ±1 position to escape local minima
-5. **Random restarts** — additional random offset candidates are tested for robustness
-6. **Output** — timeline CSV with per-group distances, plus a metadata JSON with gap info and shift history
+4. **Random restarts** — additional random offset candidates are tested for robustness
+5. **Output** — timeline CSV with per-group distances, plus a metadata JSON with gap info and shift history
 
 **Key parameters:**
 - `--max-time-diff` — maximum time difference (s) for a valid match (default: 3.0)
 - `--gap-penalty` — cost applied to each unmatched marker (default: 1e6)
-- `--refine-iterations` — local refinement passes after the global shift (default: 3)
 - `--random-restarts` — random offset candidates for robustness (default: 5)
 
 **Python API:**
 ```python
-from multichsync.marker import match_iterative, match_iterative_from_files
+from multichsync.marker import match_traversal, match_traversal_from_files
 import numpy as np
 
 # From in-memory arrays
-result = match_iterative({
+result = match_traversal({
     "fnirs": np.array([0.1, 10.2, 20.1, 30.0, 40.3]),
     "ecg":   np.array([0.0, 10.0, 20.0, 30.1, 40.0, 50.2]),
     "eeg":   np.array([0.2, 10.1, 19.9, 30.2, 40.1]),
@@ -333,11 +301,11 @@ print(f"Total distance: {result.total_distance:.3f}s")
 print(f"Gaps: {result.gaps}")
 
 # From CSV files
-result = match_iterative_from_files(
+result = match_traversal_from_files(
     ["fnirs_marker.csv", "ecg_marker.csv", "eeg_marker.csv"],
     device_names=["fnirs", "ecg", "eeg"],
-    output_dir="data/matching",
-    output_prefix="iterative_matched",
+    output_dir="Data/matching",
+    output_prefix="traversal_matched",
 )
 ```
 
@@ -345,12 +313,10 @@ result = match_iterative_from_files(
 
 ```bash
 # Basic batch quality assessment
-multichsync quality batch --input-dir Data/convert/fnirs \
-  --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
+multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
 
 # Quality assessment with metadata written to SNIRF output
-multichsync quality batch-with-metadata --input-dir Data/convert/fnirs \
-  --output-dir Data/quality
+multichsync quality batch-with-metadata --input-dir Data/convert/fnirs --output-dir Data/quality
 
 # Compute resting-state metrics
 multichsync quality resting-metrics --input-dir Data/convert/fnirs

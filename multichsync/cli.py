@@ -7,6 +7,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 from .fnirs import convert_fnirs_to_snirf, batch_convert_fnirs_to_snirf
 from .ecg import convert_acq_to_csv, batch_convert_acq_to_csv
 from .eeg import convert_eeg_format, batch_convert_eeg_format
@@ -451,266 +453,93 @@ def marker_match(args):
     """处理多设备marker匹配命令"""
     try:
         from pathlib import Path
-        from multichsync.marker import match_by_filename
+        from multichsync.marker import match_multiple_files_enhanced
 
-        # Get filename
-        if args.filename:
-            # Use filename matching mode - auto load data from Data/convert
-            filename = args.filename
-            convert_dir = args.convert_dir if args.convert_dir else "Data/convert"
+        # Get file list
+        if args.input_dir:
+            # Read files from directory
+            input_dir = Path(args.input_dir)
+            if not input_dir.exists():
+                raise FileNotFoundError(f"输入目录不存在: {input_dir}")
 
-            print(f"正在匹配文件: {filename}")
-            print(f"数据目录: {convert_dir}")
+            # Find CSV files
+            csv_files = list(input_dir.glob("*.csv"))
+            if len(csv_files) < 2:
+                raise ValueError(
+                    f"需要至少2个CSV文件进行匹配，但只找到 {len(csv_files)} 个"
+                )
 
-            # Map CLI method names to internal method names
-            internal_method = METHOD_NAME_MAPPING[args.method]
+            # Sort for consistency
+            csv_files.sort()
+            file_paths = [str(f) for f in csv_files]
+            print(f"从目录加载 {len(file_paths)} 个文件: {input_dir}")
+        elif args.input_files:
+            # Directly specify file list
+            file_paths = []
+            for f in args.input_files:
+                p = Path(f)
+                if p.exists():
+                    file_paths.append(str(p))
+                else:
+                    raise FileNotFoundError(f"找不到文件: {f}")
 
-            # Call filename matching function
-            results = match_by_filename(
-                filename=filename,
-                convert_dir=convert_dir,
-                method=internal_method,
-                max_time_diff_s=args.max_time_diff,
-                sigma_time_s=args.sigma_time,
-                estimate_drift=not args.no_drift_correction,
-                drift_method=args.drift_method,
-                output_dir=args.output_dir if args.output_dir else "data/matching",
-                output_prefix=args.output_prefix,
-                save_json=not args.no_json,
-                generate_plots=not args.no_plots,
-            )
-
-            # Print result summary
-            print(f"匹配完成!")
-            print(
-                f"  输出目录: {args.output_dir if args.output_dir else 'data/matching'}"
-            )
-            print(
-                f"  时间线CSV: {results.get('output_files', {}).get('timeline_csv', 'N/A')}"
-            )
-            print(f"  共识事件数: {results.get('n_consensus_events', 'N/A')}")
-            print(f"  总匹配数: {results.get('total_matches', 'N/A')}")
-            mean_conf = results.get("mean_confidence", "N/A")
-            print(
-                f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
-            )
-
-            # Print device statistics
-            if "device_stats" in results:
-                print(f"  设备统计:")
-                for stat in results["device_stats"]:
-                    dev_conf = stat.get("mean_confidence", "N/A")
-                    print(
-                        f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
-                    )
-
-            # Print drift correction
-            if "drift_corrections" in results:
-                print(f"  漂移校正:")
-                for i, drift in enumerate(results["drift_corrections"]):
-                    if drift:
-                        print(
-                            f"    设备{i + 1}: 偏移 {drift.get('offset', 0):.3f}s, 缩放 {drift.get('scale', 1):.5f}, R²={drift.get('r_squared', 0):.3f}"
-                        )
+            print(f"加载 {len(file_paths)} 个指定文件")
         else:
-            # Backward compatible mode: load from directory or file list
-            from multichsync.marker import match_multiple_files_enhanced
+            raise ValueError("必须提供 --input-dir 或 --input-files")
 
-            # Get file list
-            if args.input_dir:
-                # Read files from directory
-                input_dir = Path(args.input_dir)
-                if not input_dir.exists():
-                    raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+        # Device name (optional)
+        device_names = args.device_names if args.device_names else None
 
-                # Find CSV files
-                csv_files = list(input_dir.glob("*.csv"))
-                if len(csv_files) < 2:
-                    raise ValueError(
-                        f"需要至少2个CSV文件进行匹配，但只找到 {len(csv_files)} 个"
-                    )
+        # Output directory
+        output_dir = args.output_dir if args.output_dir else "Data/matching"
 
-                # Sort for consistency
-                csv_files.sort()
-                file_paths = [str(f) for f in csv_files]
-                print(f"从目录加载 {len(file_paths)} 个文件: {input_dir}")
-            elif args.input_files:
-                # Directly specify file list (support with or without extension)
-                file_paths = []
-                for f in args.input_files:
-                    p = Path(f)
-                    if p.exists():
-                        file_paths.append(str(p))
-                    else:
-                        # Try adding .csv suffix
-                        p_csv = p.with_suffix(".csv")
-                        if p_csv.exists():
-                            file_paths.append(str(p_csv))
-                        else:
-                            # Try finding in Data/marker subfolder
-                            marker_dir = Path("Data/marker")
-                            if marker_dir.exists():
-                                # Smart matching: try multiple patterns (support simplified and full filenames)
-                                input_name = p.name
+        # Map CLI method names to internal method names
+        internal_method = METHOD_NAME_MAPPING[args.method]
 
-                                # Determine base name of input file (remove common suffixes)
-                                base_name = (
-                                    input_name.replace("_ecg", "")
-                                    .replace("_fnirs", "")
-                                    .replace("_eeg", "")
-                                    .replace("_input", "")
-                                )
+        # Call matching function
+        results = match_multiple_files_enhanced(
+            file_paths=file_paths,
+            device_names=device_names,
+            method=internal_method,
+            max_time_diff_s=args.max_time_diff,
+            sigma_time_s=args.sigma_time,
+            estimate_drift=not args.no_drift_correction,
+            drift_method=args.drift_method,
+            output_dir=output_dir,
+            output_prefix=args.output_prefix,
+            save_json=not args.no_json,
+            generate_plots=not args.no_plots,
+        )
 
-                                # Determine priority search subfolder based on input suffix
-                                priority_subdirs = []
-                                if "_input" in input_name:
-                                    priority_subdirs = [
-                                        "ecg"
-                                    ]  # _input suffix prioritizes search in ecg folder
-                                elif "_ecg" in input_name:
-                                    priority_subdirs = ["ecg"]
-                                elif "_fnirs" in input_name:
-                                    priority_subdirs = ["fnirs"]
-                                elif "_eeg" in input_name:
-                                    priority_subdirs = ["eeg"]
+        # Print result summary
+        print(f"匹配完成!")
+        print(f"  输出目录: {output_dir}")
+        print(f"  时间线CSV: {output_dir}/{args.output_prefix}_timeline.csv")
+        print(f"  元数据JSON: {output_dir}/{args.output_prefix}_metadata.json")
+        print(f"  共识事件数: {results.get('n_consensus_events', 'N/A')}")
+        print(f"  总匹配数: {results.get('total_matches', 'N/A')}")
+        mean_conf = results.get("mean_confidence", "N/A")
+        print(
+            f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
+        )
 
-                                # Build search patterns
-                                search_patterns = [
-                                    input_name,  # Original input
-                                    f"{input_name}_marker",  # Add _marker suffix
-                                    # Special handling: ecg -> input conversion
-                                    input_name.replace("_ecg", "_input"),
-                                    input_name.replace("_ecg", "") + "_input",
-                                    # Special handling: fnirs/eeg stay as is
-                                    input_name.replace("_fnirs", ""),
-                                    input_name.replace("_eeg", ""),
-                                    # If user already entered _input, also try other variants
-                                    input_name.replace("_input", "_ecg"),
-                                    input_name.replace("_input", ""),
-                                    # Add base name patterns (after removing various suffixes)
-                                    base_name,
-                                    f"{base_name}_input",  # Add _input suffix
-                                    f"{base_name}_ecg",  # Add _ecg suffix
-                                    f"{base_name}_fnirs",  # Add _fnirs suffix
-                                    f"{base_name}_eeg",  # Add _eeg suffix
-                                ]
+        # Print device statistics
+        if "device_stats" in results:
+            print(f"  设备统计:")
+            for stat in results["device_stats"]:
+                dev_conf = stat.get("mean_confidence", "N/A")
+                print(
+                    f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
+                )
 
-                                # Search priority subfolders first, then other subfolders
-                                subdirs_to_search = priority_subdirs + [
-                                    s
-                                    for s in ["fnirs", "eeg", "ecg"]
-                                    if s not in priority_subdirs
-                                ]
-
-                                for subdir in subdirs_to_search:
-                                    search_dir = marker_dir / subdir
-                                    if search_dir.exists():
-                                        for pattern in search_patterns:
-                                            found = list(
-                                                search_dir.glob(f"{pattern}.csv")
-                                            )
-                                            if found:
-                                                file_paths.append(str(found[0]))
-                                                break
-                                    if file_paths and any(
-                                        Path(fp).stem.startswith(
-                                            p.stem.rstrip("_ecg")
-                                            .rstrip("_fnirs")
-                                            .rstrip("_eeg")
-                                            .rstrip("_input")
-                                        )
-                                        for fp in (
-                                            [file_paths[-1]] if file_paths else []
-                                        )
-                                    ):
-                                        break
-
-                            # Smart matching: check if correct file was matched
-                            matched = False
-                            if file_paths:
-                                input_stem = (
-                                    p.stem.replace("_ecg", "_input")
-                                    .replace("_fnirs", "")
-                                    .replace("_eeg", "")
-                                    .replace("_input", "")  # Handle case where _input suffix is already present
-                                )
-                                for fp in file_paths:
-                                    fp_stem = (
-                                        Path(fp)
-                                        .stem.replace("_input", "")
-                                        .replace("_marker", "")
-                                        .replace("_fnirs", "")
-                                        .replace("_eeg", "")
-                                        .replace("_ecg", "")
-                                    )
-                                    if input_stem in fp_stem or fp_stem.startswith(
-                                        p.stem.replace("_ecg", "")
-                                        .replace("_fnirs", "")
-                                        .replace("_eeg", "")
-                                        .replace("_input", "")
-                                    ):
-                                        matched = True
-                                        break
-                            if not matched:
-                                raise FileNotFoundError(f"找不到文件: {f}")
-
-                print(f"加载 {len(file_paths)} 个指定文件")
-            else:
-                raise ValueError("必须提供 --filename 或 --input-dir 或 --input-files")
-
-            # Device name (optional)
-            device_names = args.device_names if args.device_names else None
-
-            # Output directory
-            output_dir = args.output_dir if args.output_dir else "data/matching"
-
-            # Map CLI method names to internal method names
-            internal_method = METHOD_NAME_MAPPING[args.method]
-
-            # Call matching function
-            results = match_multiple_files_enhanced(
-                file_paths=file_paths,
-                device_names=device_names,
-                method=internal_method,
-                max_time_diff_s=args.max_time_diff,
-                sigma_time_s=args.sigma_time,
-                estimate_drift=not args.no_drift_correction,
-                drift_method=args.drift_method,
-                output_dir=output_dir,
-                output_prefix=args.output_prefix,
-                save_json=not args.no_json,
-                generate_plots=not args.no_plots,
-            )
-
-            # Print result summary
-            print(f"匹配完成!")
-            print(f"  输出目录: {output_dir}")
-            print(f"  时间线CSV: {output_dir}/{args.output_prefix}_timeline.csv")
-            print(f"  元数据JSON: {output_dir}/{args.output_prefix}_metadata.json")
-            print(f"  共识事件数: {results.get('n_consensus_events', 'N/A')}")
-            print(f"  总匹配数: {results.get('total_matches', 'N/A')}")
-            mean_conf = results.get("mean_confidence", "N/A")
-            print(
-                f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
-            )
-
-            # Print device statistics
-            if "device_stats" in results:
-                print(f"  设备统计:")
-                for stat in results["device_stats"]:
-                    dev_conf = stat.get("mean_confidence", "N/A")
+        # Print drift correction
+        if "drift_corrections" in results:
+            print(f"  漂移校正:")
+            for i, drift in enumerate(results["drift_corrections"]):
+                if drift:
                     print(
-                        f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
+                        f"    设备{i + 1}: 偏移 {drift.get('offset', 0):.3f}s, 缩放 {drift.get('scale', 1):.5f}, R²={drift.get('r_squared', 0):.3f}"
                     )
-
-            # Print drift correction
-            if "drift_corrections" in results:
-                print(f"  漂移校正:")
-                for i, drift in enumerate(results["drift_corrections"]):
-                    if drift:
-                        print(
-                            f"    设备{i + 1}: 偏移 {drift.get('offset', 0):.3f}s, 缩放 {drift.get('scale', 1):.5f}, R²={drift.get('r_squared', 0):.3f}"
-                        )
 
     except Exception as e:
         print(f"Marker匹配失败: {e}")
@@ -837,44 +666,118 @@ def marker_matchcrop_aligned(args):
 
 
 def marker_manual_match(args):
-    """处理manual-match命令 - 手动调整设备偏移量并重新生成匹配时间线"""
+    """处理manual-match命令 - 从BIDS文件直接匹配并应用手动偏移量"""
     from pathlib import Path
-    from multichsync.marker.adjust_offsets import adjust_offsets, parse_offset_list
+    import json as json_mod
+    from multichsync.marker.adjust_offsets import parse_offset_list, rebuild_timeline
+    from multichsync.marker.matcher import load_marker_csv_enhanced, DriftResult
+    from multichsync.marker import apply_drift_correction
     
     try:
-        json_path = Path(args.json_path)
+        output_dir = Path(args.output_dir) if args.output_dir else Path("Data/matching")
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        if not json_path.exists():
-            raise FileNotFoundError(f"Metadata JSON文件不存在: {json_path}")
+        # Load marker files
+        file_paths = []
+        for f in args.input_files:
+            p = Path(f)
+            if p.exists():
+                file_paths.append(str(p))
+            else:
+                raise FileNotFoundError(f"找不到文件: {f}")
         
-        # 解析偏移量列表（基于JSON中device_info顺序）
+        device_names_specified = args.device_names if args.device_names else None
+        internal_method = METHOD_NAME_MAPPING.get(args.method, "hungarian")
+        
+        # Load devices
+        devices = []
+        for i, fpath in enumerate(file_paths):
+            name = device_names_specified[i] if (device_names_specified and i < len(device_names_specified)) else None
+            dev = load_marker_csv_enhanced(fpath, name)
+            devices.append(dev)
+        
+        # Parse offsets
         offset_list = parse_offset_list(args.offsets)
         
-        if not offset_list:
-            print("警告: 未指定任何偏移量，将使用原始偏移量")
+        # Build device -> offset map
+        if device_names_specified:
+            offset_map = dict(zip(device_names_specified, offset_list))
+        else:
+            offset_map = {dev.name: offset_list[i] if i < len(offset_list) else 0.0 for i, dev in enumerate(devices)}
         
-        # 输出目录为JSON文件所在目录
-        output_dir = json_path.parent
+        # Apply offsets to each device
+        adjusted_devices = []
+        for dev in devices:
+            offset = offset_map.get(dev.name, 0.0)
+            manual_drift = DriftResult(
+                offset=offset,
+                scale=1.0,
+                r_squared=0.0,
+                n_matches=0,
+                method='manual_input'
+            )
+            dev.drift_result = manual_drift
+            dev.timestamps_corrected = apply_drift_correction(dev.timestamps_raw, manual_drift)
+            adjusted_devices.append(dev)
+            print(f"  设备 {dev.name}: 偏移 {offset:+.3f}s ({len(dev.timestamps_raw)} 个marker)")
         
-        # 运行调整
-        result = adjust_offsets(
-            json_path=json_path,
-            offsets=offset_list,
-            output_dir=output_dir,
-            output_prefix=args.prefix,
-            add_to_existing=args.add,
-            method=args.method,
+        # Rebuild consensus timeline with applied offsets
+        print("正在重建共识时间线...")
+        timeline = rebuild_timeline(
+            adjusted_devices,
+            method=internal_method,
             sigma_time_s=args.sigma_time,
             max_time_diff_s=args.max_time_diff
         )
         
-        print(f"手动匹配完成!")
+        # Save timeline CSV
+        merged_df = timeline.get_merged_dataframe()
+        csv_path = output_dir / f"{args.prefix}_timeline.csv"
+        merged_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        print(f"时间线已保存: {csv_path}")
+        
+        # Build and save metadata JSON
+        timeline_meta = timeline.get_metadata()
+        device_info_list = []
+        for dev in adjusted_devices:
+            device_info_list.append({
+                "name": dev.name,
+                "file_path": dev.file_path,
+                "converted_data_file_path": "",
+                "n_events": dev.n_events,
+                "time_range": list(dev.time_range) if dev.time_range else [0.0, 0.0],
+                "drift_correction": dev.drift_result.to_dict() if dev.drift_result else None,
+            })
+        
+        metadata = {
+            "algorithm": f"manual_match_{internal_method}",
+            "offsets_applied": offset_map,
+            "add_to_existing": args.add,
+            "adjustment_timestamp": pd.Timestamp.now().isoformat(),
+            "device_info": device_info_list,
+            "matching_statistics": {
+                "n_consensus_events": timeline_meta.get("n_matched_groups", len(merged_df)),
+                "total_matches": timeline_meta.get("total_matches", 0),
+                "mean_confidence": timeline_meta.get("mean_confidence", 0.0),
+            },
+            "timeline_metadata": timeline_meta,
+            "output_files": {"timeline_csv": str(csv_path)},
+        }
+        
+        json_path_out = output_dir / f"{args.prefix}_metadata.json"
+        with open(json_path_out, 'w', encoding='utf-8') as f:
+            json_mod.dump(metadata, f, indent=2, default=str)
+        print(f"元数据已保存: {json_path_out}")
+        
+        # Print summary
+        print(f"\n手动匹配完成!")
         print(f"  输出目录: {output_dir}")
-        print(f"  时间线文件: {result['output_files']['timeline_csv']}")
-        print(f"  元数据文件: {result['output_files']['metadata_json']}")
-        if result['output_files']['diff_report']:
-            print(f"  差异报告: {result['output_files']['diff_report']}")
-        print(f"  调整的设备数: {len(result['adjusted_devices'])}")
+        print(f"  时间线文件: {csv_path}")
+        print(f"  元数据文件: {json_path_out}")
+        print(f"  共识事件数: {timeline_meta.get('n_matched_groups', 'N/A')}")
+        print(f"  调整的设备数: {len(adjusted_devices)}")
+        for dev in adjusted_devices:
+            print(f"    {dev.name}: 偏移 {dev.drift_result.offset:+.3f}s")
         
     except Exception as e:
         print(f"手动匹配失败: {e}")
@@ -883,13 +786,13 @@ def marker_manual_match(args):
         sys.exit(1)
 
 
-def marker_iterative_match(args):
-    """Iterative shift-search matching handler."""
+def marker_traversal_match(args):
+    """Traversal shift-search matching handler."""
     try:
-        from multichsync.marker.iterative_matcher import match_iterative_cli
-        match_iterative_cli(args)
+        from multichsync.marker.traversal_matcher import match_traversal_cli
+        match_traversal_cli(args)
     except Exception as e:
-        print(f"Iterative matching failed: {e}")
+        print(f"Traversal matching failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -1621,22 +1524,16 @@ def main():
     marker_match_parser = marker_subparsers.add_parser(
         "match", help="匹配多设备marker事件，生成共识时间线"
     )
-    marker_match_parser.add_argument(
-        "--filename", "-f", help="文件名（不含后缀），自动从Data/convert加载数据"
-    )
-    marker_match_parser.add_argument(
-        "--convert-dir", help="数据目录（默认：Data/convert）"
-    )
-    input_group = marker_match_parser.add_mutually_exclusive_group(required=False)
+    input_group = marker_match_parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--input-dir", help="包含CSV文件的输入目录")
-    input_group.add_argument("--input-files", nargs="+", help="CSV文件路径列表")
+    input_group.add_argument("--input-files", nargs="+", help="CSV文件路径列表，支持BIDS通配符（例如 *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg）")
     marker_match_parser.add_argument(
         "--device-names", nargs="+", help="设备名称列表（与文件顺序对应）"
     )
     marker_match_parser.add_argument(
         "--output-dir",
-        default="data/matching",
-        help="输出目录路径（默认：data/matching）",
+        default="Data/matching",
+        help="输出目录路径（默认：Data/matching）",
     )
     marker_match_parser.add_argument(
         "--output-prefix", default="matched", help="输出文件前缀（默认：matched）"
@@ -1754,15 +1651,24 @@ def main():
     # marker manual-match subcommand - added to marker subparser
     marker_manual_match_parser = marker_subparsers.add_parser(
         "manual-match",
-        help="手动调整设备偏移量并重新生成匹配时间线"
+        help="从BIDS文件直接匹配并应用手动偏移量"
     )
     marker_manual_match_parser.add_argument(
-        "--json-path", "-j", required=True,
-        help="matched_metadata.json文件路径"
+        "--input-files", nargs="+", required=True,
+        help="CSV文件路径列表，支持BIDS通配符（例如 *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg），直接匹配并应用偏移"
     )
     marker_manual_match_parser.add_argument(
         "--offsets", "-o", required=True,
-        help="偏移量列表（基于JSON中device_info顺序）：例如 '[1.5, -0.3]' 或 JSON文件路径"
+        help="偏移量列表（基于文件顺序）：例如 '[1.5, -0.3]' 或 JSON文件路径"
+    )
+    marker_manual_match_parser.add_argument(
+        "--device-names", nargs="+",
+        help="设备名称列表（与--input-files文件顺序对应）"
+    )
+    marker_manual_match_parser.add_argument(
+        "--output-dir",
+        default="Data/matching",
+        help="输出目录路径（默认：Data/matching）"
     )
     marker_manual_match_parser.add_argument(
         "--prefix", "-p", default="manual",
@@ -1787,90 +1693,70 @@ def main():
     )
     marker_manual_match_parser.set_defaults(func=marker_manual_match)
 
-    # marker iterative-match
-    marker_iterative_parser = marker_subparsers.add_parser(
-        "iterative-match",
-        help="Iterative shift-search matching to minimise mean per-marker distance"
+    # marker traversal-match
+    marker_traversal_parser = marker_subparsers.add_parser(
+        "traversal-match",
+        help="Brute-force shift traversal matching to minimise mean per-marker distance"
     )
-    marker_iterative_parser.add_argument(
-        "--filename", "-f",
-        help="Base filename (no extension); auto-loads from Data/convert"
-    )
-    marker_iterative_parser.add_argument(
-        "--convert-dir",
-        default="Data/convert",
-        help="Convert directory (default: Data/convert)"
-    )
-    marker_iterative_parser.add_argument(
-        "--marker-dir",
-        default="Data/marker",
-        help="Marker directory (default: Data/marker)"
-    )
-    input_group_iter = marker_iterative_parser.add_mutually_exclusive_group(required=False)
-    input_group_iter.add_argument(
+    input_group_trav = marker_traversal_parser.add_mutually_exclusive_group(required=True)
+    input_group_trav.add_argument(
         "--input-dir",
         help="Directory containing marker CSV files"
     )
-    input_group_iter.add_argument(
+    input_group_trav.add_argument(
         "--input-files",
         nargs="+",
-        help="Explicit list of marker CSV file paths"
+        help="Explicit list of marker CSV file paths, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg)"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--device-names",
         nargs="+",
         help="Device names matching the order of --input-files"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--output-dir",
-        default="data/matching",
-        help="Output directory (default: data/matching)"
+        default="Data/matching",
+        help="Output directory (default: Data/matching)"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--output-prefix",
-        help="Output file prefix (default: filename or 'iterative_matched')"
+        help="Output file prefix (default: filename or 'traversal_matched')"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--max-time-diff",
         type=float,
         default=3.0,
         help="Max time difference (s) for a valid match (default: 3.0)"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--gap-penalty",
         type=float,
         default=1e6,
         help="Penalty cost for gaps (default: 1e6)"
     )
-    marker_iterative_parser.add_argument(
-        "--refine-iterations",
-        type=int,
-        default=3,
-        help="Local refinement passes after global shift (default: 3)"
-    )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--random-restarts",
         type=int,
         default=5,
         help="Random restarts for robustness (default: 5)"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--rng-seed",
         type=int,
         default=42,
         help="Random seed (default: 42)"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--no-json",
         action="store_true",
         help="Skip saving metadata JSON"
     )
-    marker_iterative_parser.add_argument(
+    marker_traversal_parser.add_argument(
         "--no-csv",
         action="store_true",
         help="Skip saving timeline CSV"
     )
-    marker_iterative_parser.set_defaults(func=marker_iterative_match)
+    marker_traversal_parser.set_defaults(func=marker_traversal_match)
 
     # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")

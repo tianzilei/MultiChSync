@@ -24,8 +24,6 @@ from .matcher import (
     EnhancedTimeline,
     load_marker_csv_enhanced,
     match_multiple_files_enhanced,
-    match_by_filename,
-    load_markers_from_filename,
 )
 
 from .matchcrop_aligned import (
@@ -45,11 +43,10 @@ from .adjust_offsets import (
     generate_diff_report,
 )
 
-from .iterative_matcher import (
-    IterativeMatchResult,
-    match_iterative,
-    match_iterative_from_files,
-    match_iterative_by_filename,
+from .traversal_matcher import (
+    TraversalMatchResult,
+    match_traversal,
+    match_traversal_from_files,
 )
 
 __all__ = [
@@ -67,8 +64,6 @@ __all__ = [
     "EnhancedTimeline",
     "load_marker_csv_enhanced",
     "match_multiple_files_enhanced",
-    "match_by_filename",
-    "load_markers_from_filename",
     "matchcrop_aligned",
     "calculate_aligned_time_range",
     "apply_drift_correction",
@@ -80,9 +75,8 @@ __all__ = [
     "load_and_adjust_metadata",
     "rebuild_timeline",
     "generate_diff_report",
-    # Iterative matcher
-    "IterativeMatchResult",
-    "match_iterative",
-    "match_iterative_from_files",
-    "match_iterative_by_filename",
+    # Traversal matcher
+    "TraversalMatchResult",
+    "match_traversal",
+    "match_traversal_from_files",
 ]

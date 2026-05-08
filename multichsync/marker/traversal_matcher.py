@@ -1,17 +1,16 @@
 """
-Iterative marker matching with per-marker distance optimization.
+Traversal-based marker matching with per-marker distance optimization.
 
 This module provides an alternative to the Hungarian / min-cost-flow / Sinkhorn
-approaches.  It uses a simple iterative shift-search strategy:
+approaches.  It uses a brute-force shift traversal strategy:
 
 1. Pick the device with the most markers as the **anchor**.
-2. For each other device, search over all possible alignment offsets (shifts)
+2. For each other device, traverse every possible alignment offset (shift)
    to find the one that minimises the **mean pairwise distance** between
    matched markers.
-3. Refine the alignment locally by trying ±1 shifts on individual clusters.
-4. For gaps (a device has no marker in a segment), the corresponding markers
+3. For gaps (a device has no marker in a segment), the corresponding markers
    from the other devices are left *unmatched* in the output.
-5. Return the assignment with the best (lowest) mean / total distance.
+4. Return the assignment with the best (lowest) mean / total distance.
 """
 
 from __future__ import annotations
@@ -33,8 +32,8 @@ import pandas as pd
 
 
 @dataclass
-class IterativeMatchResult:
-    """Holds the result of one iterative matching run."""
+class TraversalMatchResult:
+    """Holds the result of one traversal matching run."""
 
     anchor_name: str
     """Name of the anchor (reference) device."""
@@ -102,18 +101,17 @@ class _ShiftEval:
 # ══════════════════════════════════════════════════════════════════════
 
 
-def match_iterative(
+def match_traversal(
     marker_dict: Dict[str, np.ndarray],
     *,
     anchor: Optional[str] = None,
     max_time_diff: float = 3.0,
     gap_penalty: float = 1e6,
-    refine_iterations: int = 3,
     random_restarts: int = 5,
     rng_seed: int = 42,
-) -> IterativeMatchResult:
+) -> TraversalMatchResult:
     """
-    Iteratively match markers across devices by searching over alignment
+    Traverse shift space to match markers across devices, searching over alignment
     shifts and choosing the assignment with the lowest mean distance.
 
     Parameters
@@ -129,9 +127,6 @@ def match_iterative(
     gap_penalty : float
         Large cost used for gaps (markers left unmatched).  This prevents
         the optimiser from leaving everything unmatched.
-    refine_iterations : int
-        After the global shift is found, perform this many local refinement
-        passes (trying ±1 shifts on individual groups).
     random_restarts : int
         Number of random subsamples used to build initial alignment candidates.
         Only relevant when two devices have very different marker counts.
@@ -140,7 +135,7 @@ def match_iterative(
 
     Returns
     -------
-    IterativeMatchResult
+    TraversalMatchResult
     """
     # ── Validate ──────────────────────────────────────────────────────
     if len(marker_dict) < 2:
@@ -186,7 +181,6 @@ def match_iterative(
             gap_penalty=gap_penalty,
             n_random_restarts=random_restarts,
             rng_seed=rng_seed,
-            refine_iterations=refine_iterations,
         )
         shift_history[dev_name] = [(best.shift, best.mean_dist)]
 
@@ -231,7 +225,7 @@ def match_iterative(
         if gap_idxs:
             gaps[d] = gap_idxs
 
-    return IterativeMatchResult(
+    return TraversalMatchResult(
         anchor_name=anchor,
         device_names=device_names,
         assignments=assignments,
@@ -258,16 +252,16 @@ def _find_best_shift(
     gap_penalty: float,
     n_random_restarts: int,
     rng_seed: int,
-    refine_iterations: int,
 ) -> _ShiftEval:
     """
-    Search over all possible alignment shifts between *t_a* (anchor) and
+    Traverse every possible alignment shift between *t_a* (anchor) and
     *t_b* (other device), returning the shift with the lowest **mean**
     pairwise distance.
 
     A "shift" means: marker *i* in the anchor is paired with marker
     *i + shift* in device B.  Negative shifts mean B's marker sequence
-    starts earlier.
+    starts earlier.  This is a pure brute-force traversal — every valid
+    shift is evaluated.
     """
     n_a, n_b = len(t_a), len(t_b)
     shift_min = -n_b + 1  # last B marker paired with first A marker
@@ -275,7 +269,7 @@ def _find_best_shift(
 
     best: Optional[_ShiftEval] = None
 
-    # ── 1. Exhaustive search over all shifts ──────────────────────────
+    # ── Exhaustive traversal over all shifts ─────────────────────────
     for shift in range(shift_min, shift_max + 1):
         ev = _evaluate_shift(
             t_a, t_b, shift, max_time_diff, gap_penalty
@@ -283,13 +277,11 @@ def _find_best_shift(
         if best is None or ev.mean_dist < best.mean_dist:
             best = ev
 
-    # ── 2. Random restarts (for tricky cases with big count diff) ─────
+    # ── Random restarts (cover time-domain offsets) ───────────────────
     rng = np.random.default_rng(rng_seed)
     for _ in range(n_random_restarts):
-        # Pick a random offset in time space rather than index space
         t_range = max(float(t_a[-1] - t_a[0]), 1.0)
         random_offset = rng.uniform(-t_range * 0.3, t_range * 0.3)
-        # Convert the time offset to a rough index shift
         median_step_b = float(np.median(np.diff(t_b))) if n_b > 1 else 1.0
         approx_shift = int(round(random_offset / max(median_step_b, 1e-6)))
         approx_shift = int(np.clip(approx_shift, shift_min, shift_max))
@@ -299,12 +291,6 @@ def _find_best_shift(
         )
         if best is None or ev.mean_dist < best.mean_dist:
             best = ev
-
-    # ── 3. Local refinement ──────────────────────────────────────────
-    if best is not None and refine_iterations > 0 and n_a > 0 and n_b > 0:
-        best = _refine_locally(
-            best, t_a, t_b, max_time_diff, gap_penalty, refine_iterations
-        )
 
     return best  # type: ignore[return-value]
 
@@ -370,101 +356,6 @@ def _evaluate_shift(
     )
 
 
-def _refine_locally(
-    current: _ShiftEval,
-    t_a: np.ndarray,
-    t_b: np.ndarray,
-    max_time_diff: float,
-    gap_penalty: float,
-    n_iterations: int,
-) -> _ShiftEval:
-    """
-    Try perturbing matched pairs by ±1 index to reduce mean distance.
-    """
-    best = current
-    for _ in range(n_iterations):
-        improved = False
-        base_shift = best.shift
-
-        # Try shifting the whole alignment by ±1
-        for delta in (-1, 1):
-            candidate = _evaluate_shift(
-                t_a, t_b, base_shift + delta, max_time_diff, gap_penalty
-            )
-            if candidate.mean_dist < best.mean_dist:
-                best = candidate
-                improved = True
-
-        # Try flipping individual matches in the last few / first few
-        for idx in range(min(3, len(best.a_idxs))):
-            # Try shifting this specific match
-            old_a = best.a_idxs[idx]
-            old_b = best.b_idxs[idx]
-            for db in (-1, 1):
-                new_j = old_b + db
-                if 0 <= new_j < len(t_b):
-                    dt = abs(t_a[old_a] - t_b[new_j])
-                    if dt <= max_time_diff:
-                        # Build a new ShiftEval with this tweak
-                        ev = _build_perturbed(
-                            t_a, t_b, best, idx, old_a, new_j,
-                            max_time_diff, gap_penalty,
-                        )
-                        if ev is not None and ev.mean_dist < best.mean_dist:
-                            best = ev
-                            improved = True
-
-        if not improved:
-            break
-
-    return best
-
-
-def _build_perturbed(
-    t_a: np.ndarray,
-    t_b: np.ndarray,
-    original: _ShiftEval,
-    perturb_idx: int,
-    a_idx: int,
-    new_b_idx: int,
-    max_time_diff: float,
-    gap_penalty: float,
-) -> Optional[_ShiftEval]:
-    """Rebuild a ShiftEval with one matched pair reassigned."""
-    distances: List[float] = []
-    a_idxs: List[int] = []
-    b_idxs: List[int] = []
-
-    for i in range(len(original.a_idxs)):
-        if i == perturb_idx:
-            # Use perturbed index
-            dt = abs(t_a[a_idx] - t_b[new_b_idx])
-            if dt <= max_time_diff:
-                distances.append(dt)
-                a_idxs.append(a_idx)
-                b_idxs.append(new_b_idx)
-            else:
-                distances.append(gap_penalty)
-        else:
-            distances.append(original.distances[i])
-            a_idxs.append(original.a_idxs[i])
-            b_idxs.append(original.b_idxs[i])
-
-    if not distances:
-        return None
-
-    total = sum(distances)
-    mean = total / len(distances)
-
-    return _ShiftEval(
-        shift=original.shift,
-        distances=distances,
-        mean_dist=mean,
-        total_dist=total,
-        n_matched=len(distances),
-        a_idxs=a_idxs,
-        b_idxs=b_idxs,
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -472,22 +363,21 @@ def _build_perturbed(
 # ══════════════════════════════════════════════════════════════════════
 
 
-def match_iterative_from_files(
+def match_traversal_from_files(
     file_paths: List[str],
     device_names: Optional[List[str]] = None,
     *,
     max_time_diff: float = 3.0,
     gap_penalty: float = 1e6,
-    refine_iterations: int = 3,
     random_restarts: int = 5,
     rng_seed: int = 42,
     output_dir: str = "data/matching",
-    output_prefix: str = "iterative_matched",
+    output_prefix: str = "traversal_matched",
     save_json: bool = True,
     save_csv: bool = True,
-) -> IterativeMatchResult:
+) -> TraversalMatchResult:
     """
-    Load marker CSV files and run iterative matching.
+    Load marker CSV files and run traversal matching.
 
     Parameters
     ----------
@@ -496,11 +386,11 @@ def match_iterative_from_files(
     device_names : list of str, optional
         Names for each device.  If *None*, derived from the filenames.
 
-    For other parameters see :func:`match_iterative`.
+    For other parameters see :func:`match_traversal`.
 
     Returns
     -------
-    IterativeMatchResult
+    TraversalMatchResult
     """
     from .matcher import load_marker_csv_enhanced
 
@@ -515,11 +405,10 @@ def match_iterative_from_files(
 
     marker_dict = {d.name: d.timestamps_raw for d in devices}
 
-    result = match_iterative(
+    result = match_traversal(
         marker_dict,
         max_time_diff=max_time_diff,
         gap_penalty=gap_penalty,
-        refine_iterations=refine_iterations,
         random_restarts=random_restarts,
         rng_seed=rng_seed,
     )
@@ -535,87 +424,13 @@ def match_iterative_from_files(
     return result
 
 
-def match_iterative_by_filename(
-    filename: str,
-    *,
-    convert_dir: str = "Data/convert",
-    marker_dir: str = "Data/marker",
-    max_time_diff: float = 3.0,
-    gap_penalty: float = 1e6,
-    refine_iterations: int = 3,
-    random_restarts: int = 5,
-    rng_seed: int = 42,
-    output_dir: str = "data/matching",
-    output_prefix: Optional[str] = None,
-    save_json: bool = True,
-    save_csv: bool = True,
-) -> IterativeMatchResult:
-    """
-    Convenience wrapper that auto-loads markers for a given filename
-    (see :func:`~multichsync.marker.matcher.load_markers_from_filename`)
-    and runs iterative matching.
-
-    Parameters
-    ----------
-    filename : str
-        Base filename to match (e.g. ``"20251101060"``).
-    convert_dir, marker_dir : str
-        Directories to search for data / markers.
-
-    For other parameters see :func:`match_iterative`.
-
-    Returns
-    -------
-    IterativeMatchResult
-    """
-    from .matcher import load_markers_from_filename
-
-    marker_data = load_markers_from_filename(
-        filename, convert_dir=convert_dir, marker_dir=marker_dir
-    )
-
-    if len(marker_data) < 2:
-        raise ValueError(
-            f"Need at least 2 devices, found {len(marker_data)} "
-            f"for '{filename}'"
-        )
-
-    marker_dict: Dict[str, np.ndarray] = {}
-    file_paths: List[str] = []
-    device_names: List[str] = []
-    for dev_type, (timestamps, fpath) in marker_data.items():
-        marker_dict[dev_type] = timestamps
-        file_paths.append(fpath)
-        device_names.append(dev_type)
-
-    result = match_iterative(
-        marker_dict,
-        max_time_diff=max_time_diff,
-        gap_penalty=gap_penalty,
-        refine_iterations=refine_iterations,
-        random_restarts=random_restarts,
-        rng_seed=rng_seed,
-    )
-
-    # ── Save outputs ──────────────────────────────────────────────────
-    os.makedirs(output_dir, exist_ok=True)
-    prefix = output_prefix or filename
-
-    if save_csv:
-        _save_timeline_csv(result, output_dir, prefix)
-    if save_json:
-        _save_metadata_json(result, output_dir, prefix)
-
-    return result
-
-
 # ══════════════════════════════════════════════════════════════════════
 # Output helpers
 # ══════════════════════════════════════════════════════════════════════
 
 
 def _save_timeline_csv(
-    result: IterativeMatchResult,
+    result: TraversalMatchResult,
     output_dir: str,
     prefix: str,
 ) -> str:
@@ -631,18 +446,18 @@ def _save_timeline_csv(
     df = pd.DataFrame(data)
     path = os.path.join(output_dir, f"{prefix}_timeline.csv")
     df.to_csv(path, index=False, encoding="utf-8-sig")
-    print(f"Saved iterative-match timeline → {path}")
+    print(f"Saved traversal-match timeline → {path}")
     return path
 
 
 def _save_metadata_json(
-    result: IterativeMatchResult,
+    result: TraversalMatchResult,
     output_dir: str,
     prefix: str,
 ) -> str:
     """Save matching metadata as JSON."""
     meta = {
-        "algorithm": "iterative_shift",
+        "algorithm": "traversal_shift",
         "anchor": result.anchor_name,
         "devices": result.device_names,
         "n_groups": result.n_groups,
@@ -661,7 +476,7 @@ def _save_metadata_json(
     path = os.path.join(output_dir, f"{prefix}_metadata.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2, default=str)
-    print(f"Saved iterative-match metadata → {path}")
+    print(f"Saved traversal-match metadata → {path}")
     return path
 
 
@@ -670,66 +485,49 @@ def _save_metadata_json(
 # ══════════════════════════════════════════════════════════════════════
 
 
-def match_iterative_cli(args: Any) -> None:
-    """Entry point called from ``multichsync marker iterative-match``."""
-    if args.filename:
-        result = match_iterative_by_filename(
-            args.filename,
-            convert_dir=args.convert_dir or "Data/convert",
-            marker_dir=args.marker_dir or "Data/marker",
-            max_time_diff=args.max_time_diff,
-            gap_penalty=args.gap_penalty,
-            refine_iterations=args.refine_iterations,
-            random_restarts=args.random_restarts,
-            rng_seed=args.rng_seed,
-            output_dir=args.output_dir or "data/matching",
-            output_prefix=args.output_prefix,
-            save_json=not args.no_json,
-            save_csv=not args.no_csv,
-        )
+def match_traversal_cli(args: Any) -> None:
+    """Entry point called from ``multichsync marker traversal-match``."""
+    from .matcher import load_marker_csv_enhanced
+
+    file_paths: List[str] = []
+    device_names: Optional[List[str]] = None
+
+    if args.input_dir:
+        input_dir = Path(args.input_dir)
+        if not input_dir.exists():
+            raise FileNotFoundError(f"Input directory not found: {input_dir}")
+        csv_files = sorted(input_dir.glob("*.csv"))
+        if len(csv_files) < 2:
+            raise ValueError(
+                f"Need ≥2 CSV files, found {len(csv_files)} in {input_dir}"
+            )
+        file_paths = [str(f) for f in csv_files]
+        print(f"Loaded {len(file_paths)} files from {input_dir}")
+    elif args.input_files:
+        file_paths = list(args.input_files)
+        print(f"Loaded {len(file_paths)} specified files")
     else:
-        from .matcher import load_marker_csv_enhanced
+        raise ValueError("Provide --input-dir or --input-files")
 
-        file_paths: List[str] = []
-        device_names: Optional[List[str]] = None
+    if args.device_names:
+        device_names = args.device_names
 
-        if args.input_dir:
-            input_dir = Path(args.input_dir)
-            if not input_dir.exists():
-                raise FileNotFoundError(f"Input directory not found: {input_dir}")
-            csv_files = sorted(input_dir.glob("*.csv"))
-            if len(csv_files) < 2:
-                raise ValueError(
-                    f"Need ≥2 CSV files, found {len(csv_files)} in {input_dir}"
-                )
-            file_paths = [str(f) for f in csv_files]
-            print(f"Loaded {len(file_paths)} files from {input_dir}")
-        elif args.input_files:
-            file_paths = list(args.input_files)
-            print(f"Loaded {len(file_paths)} specified files")
-        else:
-            raise ValueError("Provide --filename, --input-dir, or --input-files")
-
-        if args.device_names:
-            device_names = args.device_names
-
-        result = match_iterative_from_files(
-            file_paths,
-            device_names=device_names,
-            max_time_diff=args.max_time_diff,
-            gap_penalty=args.gap_penalty,
-            refine_iterations=args.refine_iterations,
-            random_restarts=args.random_restarts,
-            rng_seed=args.rng_seed,
-            output_dir=args.output_dir or "data/matching",
-            output_prefix=args.output_prefix or "iterative_matched",
-            save_json=not args.no_json,
-            save_csv=not args.no_csv,
-        )
+    result = match_traversal_from_files(
+        file_paths,
+        device_names=device_names,
+        max_time_diff=args.max_time_diff,
+        gap_penalty=args.gap_penalty,
+        random_restarts=args.random_restarts,
+        rng_seed=args.rng_seed,
+        output_dir=args.output_dir or "Data/matching",
+        output_prefix=args.output_prefix or "traversal_matched",
+        save_json=not args.no_json,
+        save_csv=not args.no_csv,
+    )
 
     # ── Print summary ─────────────────────────────────────────────────
     print(f"\n{'='*50}")
-    print(f"Iterative matching complete")
+    print(f"Traversal matching complete")
     print(f"{'='*50}")
     print(f"  Anchor device:     {result.anchor_name}")
     print(f"  Devices:           {', '.join(result.device_names)}")
