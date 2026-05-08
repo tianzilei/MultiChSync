@@ -883,6 +883,18 @@ def marker_manual_match(args):
         sys.exit(1)
 
 
+def marker_iterative_match(args):
+    """Iterative shift-search matching handler."""
+    try:
+        from multichsync.marker.iterative_matcher import match_iterative_cli
+        match_iterative_cli(args)
+    except Exception as e:
+        print(f"Iterative matching failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def quality_assess(args):
     """处理SNIRF文件质量评估命令"""
     try:
@@ -1774,6 +1786,91 @@ def main():
         help="匹配的最大时间差（默认：3.0）"
     )
     marker_manual_match_parser.set_defaults(func=marker_manual_match)
+
+    # marker iterative-match
+    marker_iterative_parser = marker_subparsers.add_parser(
+        "iterative-match",
+        help="Iterative shift-search matching to minimise mean per-marker distance"
+    )
+    marker_iterative_parser.add_argument(
+        "--filename", "-f",
+        help="Base filename (no extension); auto-loads from Data/convert"
+    )
+    marker_iterative_parser.add_argument(
+        "--convert-dir",
+        default="Data/convert",
+        help="Convert directory (default: Data/convert)"
+    )
+    marker_iterative_parser.add_argument(
+        "--marker-dir",
+        default="Data/marker",
+        help="Marker directory (default: Data/marker)"
+    )
+    input_group_iter = marker_iterative_parser.add_mutually_exclusive_group(required=False)
+    input_group_iter.add_argument(
+        "--input-dir",
+        help="Directory containing marker CSV files"
+    )
+    input_group_iter.add_argument(
+        "--input-files",
+        nargs="+",
+        help="Explicit list of marker CSV file paths"
+    )
+    marker_iterative_parser.add_argument(
+        "--device-names",
+        nargs="+",
+        help="Device names matching the order of --input-files"
+    )
+    marker_iterative_parser.add_argument(
+        "--output-dir",
+        default="data/matching",
+        help="Output directory (default: data/matching)"
+    )
+    marker_iterative_parser.add_argument(
+        "--output-prefix",
+        help="Output file prefix (default: filename or 'iterative_matched')"
+    )
+    marker_iterative_parser.add_argument(
+        "--max-time-diff",
+        type=float,
+        default=3.0,
+        help="Max time difference (s) for a valid match (default: 3.0)"
+    )
+    marker_iterative_parser.add_argument(
+        "--gap-penalty",
+        type=float,
+        default=1e6,
+        help="Penalty cost for gaps (default: 1e6)"
+    )
+    marker_iterative_parser.add_argument(
+        "--refine-iterations",
+        type=int,
+        default=3,
+        help="Local refinement passes after global shift (default: 3)"
+    )
+    marker_iterative_parser.add_argument(
+        "--random-restarts",
+        type=int,
+        default=5,
+        help="Random restarts for robustness (default: 5)"
+    )
+    marker_iterative_parser.add_argument(
+        "--rng-seed",
+        type=int,
+        default=42,
+        help="Random seed (default: 42)"
+    )
+    marker_iterative_parser.add_argument(
+        "--no-json",
+        action="store_true",
+        help="Skip saving metadata JSON"
+    )
+    marker_iterative_parser.add_argument(
+        "--no-csv",
+        action="store_true",
+        help="Skip saving timeline CSV"
+    )
+    marker_iterative_parser.set_defaults(func=marker_iterative_match)
 
     # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")

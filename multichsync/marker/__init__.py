@@ -45,6 +45,13 @@ from .adjust_offsets import (
     generate_diff_report,
 )
 
+from .iterative_matcher import (
+    IterativeMatchResult,
+    match_iterative,
+    match_iterative_from_files,
+    match_iterative_by_filename,
+)
+
 __all__ = [
     "extract_biopac_marker",
     "extract_brainvision_marker",
@@ -73,4 +80,9 @@ __all__ = [
     "load_and_adjust_metadata",
     "rebuild_timeline",
     "generate_diff_report",
+    # Iterative matcher
+    "IterativeMatchResult",
+    "match_iterative",
+    "match_iterative_from_files",
+    "match_iterative_by_filename",
 ]

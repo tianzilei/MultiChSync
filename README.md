@@ -2,6 +2,67 @@
 
 A Python tool for converting and synchronizing multimodal neuroimaging data (fNIRS, EEG, ECG).
 
+## Architecture Overview
+
+MultiChSync is a multimodal neuroimaging data processing pipeline designed to handle the conversion, synchronization, and quality assessment of fNIRS, EEG, and ECG data. The system addresses three core challenges:
+
+1. **Format conversion** — Transforming proprietary formats (Shimadzu TXT, Curry/EEGLAB, Biopac ACQ) into standard open formats (SNIRF, BrainVision, CSV)
+2. **Temporal synchronization** — Aligning event markers across multiple recording devices with different clock drifts
+3. **Quality assessment** — Automated signal quality evaluation for fNIRS data with comprehensive metrics
+
+### High-Level Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│                         User Interface Layer                          │
+├───────────────────────────────────────────────────────────────────────┤
+│  Command Line Interface (CLI)            Python API                   │
+│  • multichsync fnirs convert            • from multichsync.fnirs import│
+│  • multichsync eeg batch                  convert_fnirs_to_snirf     │
+│  • multichsync marker match             • from multichsync.quality    │
+│                                            import process_one_snirf   │
+└───────────────────────────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                        Core Processing Modules                        │
+├───────────────────────────────────────────────────────────────────────┤
+│  fNIRS Module     EEG Module      ECG Module      Marker Module      │
+│  • Parser         • Parser        • Parser        • Extractor        │
+│  • Writer         • Writer        • Writer        • Cleaner          │
+│  • Converter      • Converter     • Converter     • Matcher          │
+│  • Batch          • Batch         • Batch         • Info Extractor   │
+│  • MNE Patch      └───────────────┴───────────────┘                  │
+│  • Quality Assessor                   │                              │
+│                      Quality Module   │                              │
+│                      • Signal Metrics │                              │
+│                      • Metadata Writer│                              │
+└───────────────────────────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                          Data Format Layer                            │
+├───────────────────────────────────────────────────────────────────────┤
+│  Input Formats                     Output Formats                     │
+│  • Shimadzu TXT/CSV               • SNIRF v1.1 (HDF5)                │
+│  • Curry .set/.fdt                • BrainVision (.vhdr/.vmrk/.eeg)   │
+│  • EEGLAB .set                    • EEGLAB .set                      │
+│  • Biopac .acq                    • EDF                              │
+│  • BrainVision .vmrk              • CSV (ECG/markers)                │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### Module Structure
+
+Each major module follows a consistent pattern:
+```
+__init__.py     # Public API exports
+parser.py       # Input file parsing
+writer.py       # Output file writing
+converter.py    # Core conversion logic
+batch.py        # Batch processing utilities
+```
+
 ## Features
 
 - **fNIRS**: Convert Shimadzu/NIRS-SPM TXT → SNIRF v1.1 with MNE compatibility patching
@@ -11,54 +72,163 @@ A Python tool for converting and synchronizing multimodal neuroimaging data (fNI
 - **Quality Assessment**: Automated fNIRS signal quality evaluation with metadata embedding
 - **BIDS-Compatible**: Output follows BIDS naming conventions
 
-## Quick Start
+## Installation
 
-### Installation
+### Prerequisites
+
+- **Python**: Version 3.8 or higher
+- **Operating System**: Linux, macOS, or Windows
+- **Memory**: 4GB RAM minimum, 8GB+ recommended for large datasets
+
+### Install from Source (Recommended for Development)
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd multichsync
-
-# Install with core dependencies
 pip install -e .
-
-# Install with all dev tools (pytest, black, ruff, mypy)
-pip install -e ".[dev]"
-
-# Install optional quality-assessment extras
-pip install -e ".[quality]"
 ```
 
-### Data Conversion
+### Verify Installation
 
 ```bash
-# fNIRS: Convert TXT to SNIRF
+multichsync --version
+multichsync --help
+python -c "from multichsync.fnirs import convert_fnirs_to_snirf; print('OK')"
+```
+
+### Troubleshooting
+
+**h5py installation failures**: Install system HDF5 libraries (Linux: `libhdf5-dev`, macOS: `brew install hdf5`, Windows: use precompiled wheels).
+**MNE import errors**: `pip install --upgrade mne`
+**Permission errors**: Use a virtual environment or `pip install --user multichsync`
+
+## Quick Start
+
+### Prepare Your Data
+
+Place raw data in the following structure:
+
+```
+Data/
+├── raw/
+│   ├── fnirs/          # Shimadzu .TXT or .csv files
+│   ├── EEG/           # Curry .set or EEGLAB .set files
+│   └── ECG/           # Biopac .acq files
+├── source_coordinates.csv   # fNIRS source 3D positions (T1-T8)
+└── detector_coordinates.csv # fNIRS detector 3D positions (R1-R8)
+```
+
+### Step 1: Convert Data
+
+```bash
+# fNIRS: TXT to SNIRF
 multichsync fnirs batch --input-dir Data/raw/fnirs \
   --src-coords Data/source_coordinates.csv --det-coords Data/detector_coordinates.csv \
   --output-dir Data/convert/fnirs
 
-# EEG: Convert to BrainVision format with fixed sampling rate (250Hz default)
+# EEG: to BrainVision format (250Hz default)
 multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision \
   --output-dir Data/convert/EEG --recursive --sampling-rate 250
 
-# ECG: Convert ACQ to CSV with fixed sampling rate
+# ECG: ACQ to CSV
 multichsync ecg batch --input-dir Data/raw/ECG \
   --output-dir Data/convert/ECG --sampling-rate 250
 ```
 
-### Fixed Sampling Rate
+### Step 2: Extract & Clean Markers
+
+```bash
+# Extract markers from all modalities
+multichsync marker batch --types fnirs,ecg,eeg
+
+# Clean markers (deduplicate, filter quality, remove start marker at t=0)
+multichsync marker clean --input Data/marker --inplace \
+  --min-rows 2 --min-interval 1.0 --remove-start
+
+# Generate subject-level marker reports
+multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+```
+
+### Step 3: Synchronize Markers Across Devices
+
+```bash
+# Match markers using Hungarian algorithm (default)
+multichsync marker match --filename sub-060_ses-01_task-rest \
+  --output-dir Data/matching
+
+# Or specify files directly
+multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg \
+  --output-dir Data/matching --method hungarian
+
+# Supported methods: hungarian (default), mincostflow, sinkhorn
+```
+
+### Step 4: Crop Aligned Data
+
+```bash
+# Crop all device data using consensus time range
+multichsync marker matchcrop-aligned \
+  --json-path Data/matching/matched_metadata.json \
+  --start-time 0.0 --end-time 300.0 --taskname synchronized_task
+```
+
+### Step 5: Assess fNIRS Quality
+
+```bash
+# Batch quality assessment
+multichsync quality batch --input-dir Data/convert/fnirs \
+  --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
+
+# Quality assessment with metadata written to SNIRF
+multichsync quality batch-with-metadata --input-dir Data/convert/fnirs \
+  --output-dir Data/quality
+
+# Generate visualization plots
+multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
+```
+
+## Complete Workflow Script
+
+```bash
+#!/bin/bash
+# 1. Convert all data
+multichsync fnirs batch --input-dir Data/raw/fnirs \
+  --src-coords Data/source_coordinates.csv \
+  --det-coords Data/detector_coordinates.csv --output-dir Data/convert/fnirs
+multichsync eeg batch --input-dir Data/raw/EEG \
+  --format BrainVision --output-dir Data/convert/EEG --recursive
+multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG
+
+# 2. Extract and clean markers
+multichsync marker batch --types fnirs,ecg,eeg
+multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0
+
+# 3. Generate marker reports
+multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+
+# 4. Match markers
+multichsync marker match --filename sub-060_ses-01_task-rest --output-dir Data/matching
+
+# 5. Crop aligned data
+multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json \
+  --start-time 0.0 --end-time 300.0 --taskname synchronized
+
+# 6. Quality assessment
+multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
+```
+
+## Fixed Sampling Rate
 
 EEG and ECG conversion support fixed sampling rate output for consistent downstream processing:
 
 ```bash
-# EEG: Convert with 250Hz sampling rate (default when --sampling-rate flag is used)
+# EEG: Convert with 250Hz sampling rate (default when --sampling-rate is used)
 multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --sampling-rate 250
 
-# EEG: Convert with custom sampling rate (500Hz)
+# EEG: Custom sampling rate (500Hz)
 multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --sampling-rate 500
 
-# EEG: Convert without resampling (preserve original sampling rate)
+# EEG: Preserve original sampling rate (omit --sampling-rate)
 multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision
 
 # ECG: Convert with 250Hz sampling rate (default)
@@ -67,20 +237,14 @@ multichsync ecg batch --input-dir Data/raw/ECG --sampling-rate 250
 
 **Note:** EEG resampling uses a 0.1Hz tolerance threshold to avoid unnecessary processing when the original sampling rate is already close to the target rate.
 
-### Marker Pipeline
+## Marker Pipeline Details
 
 ```bash
 # Extract markers from a single file (auto-detect type)
 multichsync marker extract --input Data/raw/fnirs/sub-001_task-rest_fnirs.csv --type fnirs
 
-# Extract markers from all modalities (batch mode)
-multichsync marker batch --types fnirs,ecg,eeg
-
-# Clean markers (remove duplicates, filter quality, remove start marker at t=0)
+# Clean markers (deduplicate, filter quality, remove start marker at t=0)
 multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0 --remove-start
-
-# Generate subject-level reports (scans Data/convert/ and Data/raw/ for data files)
-multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
 
 # Match markers across devices (multiple algorithms available)
 multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg \
@@ -97,8 +261,7 @@ multichsync marker crop --timeline-csv Data/matching/matched_timeline.csv \
 # Manually adjust device offsets and regenerate matched timeline
 multichsync marker manual-match \
   --json-path Data/matching/matched_metadata.json \
-  --offsets "[1.5, -0.3]" \
-  --prefix manual
+  --offsets "[1.5, -0.3]" --prefix manual
 
 # Crop matched data using aligned timelines
 multichsync marker matchcrop --timeline-csv Data/matching/matched_timeline.csv \
@@ -116,7 +279,69 @@ multichsync marker matchcrop-aligned \
 #   sinkhorn     - Sinkhorn optimal transport
 ```
 
-### Quality Assessment (fNIRS)
+### Iterative Match (Distance-Optimised)
+
+An alternative matching strategy that uses **iterative shift-search** instead of
+global optimisation.  It finds the alignment that minimises the **mean
+per-marker pairwise distance** across devices, and explicitly handles gaps
+where a device has no corresponding marker.
+
+```bash
+# Iterative match by filename (auto-loads from Data/convert)
+multichsync marker iterative-match --filename sub-060_ses-01_task-rest
+
+# Iterative match from specific marker CSV files
+multichsync marker iterative-match \
+  --input-files Data/marker/fnirs/*_marker.csv Data/marker/ecg/*_marker.csv \
+  --device-names fnirs ecg \
+  --max-time-diff 2.0
+
+# Iterative match with custom parameters
+multichsync marker iterative-match --filename sub-060_ses-01_task-rest \
+  --max-time-diff 3.0 --gap-penalty 1000000 \
+  --refine-iterations 5 --random-restarts 10
+```
+
+**How it works:**
+1. **Anchor** — the device with the most markers is used as the reference
+2. **Shift search** — every possible alignment offset between the anchor and each other device is evaluated
+3. **Distance scoring** — each offset is scored by the mean absolute time difference across all matched pairs; gaps (unmatched markers) add a configurable penalty
+4. **Local refinement** — individual group assignments are perturbed ±1 position to escape local minima
+5. **Random restarts** — additional random offset candidates are tested for robustness
+6. **Output** — timeline CSV with per-group distances, plus a metadata JSON with gap info and shift history
+
+**Key parameters:**
+- `--max-time-diff` — maximum time difference (s) for a valid match (default: 3.0)
+- `--gap-penalty` — cost applied to each unmatched marker (default: 1e6)
+- `--refine-iterations` — local refinement passes after the global shift (default: 3)
+- `--random-restarts` — random offset candidates for robustness (default: 5)
+
+**Python API:**
+```python
+from multichsync.marker import match_iterative, match_iterative_from_files
+import numpy as np
+
+# From in-memory arrays
+result = match_iterative({
+    "fnirs": np.array([0.1, 10.2, 20.1, 30.0, 40.3]),
+    "ecg":   np.array([0.0, 10.0, 20.0, 30.1, 40.0, 50.2]),
+    "eeg":   np.array([0.2, 10.1, 19.9, 30.2, 40.1]),
+}, max_time_diff=3.0)
+
+print(f"Mean distance: {result.mean_distance:.3f}s")
+print(f"Total distance: {result.total_distance:.3f}s")
+print(f"Gaps: {result.gaps}")
+
+# From CSV files
+result = match_iterative_from_files(
+    ["fnirs_marker.csv", "ecg_marker.csv", "eeg_marker.csv"],
+    device_names=["fnirs", "ecg", "eeg"],
+    output_dir="data/matching",
+    output_prefix="iterative_matched",
+)
+```
+
+## Quality Assessment (fNIRS)
 
 ```bash
 # Basic batch quality assessment
@@ -133,6 +358,17 @@ multichsync quality resting-metrics --input-dir Data/convert/fnirs
 # Generate visualization plots
 multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
 ```
+
+### Quality Metrics
+
+- Signal-to-noise ratio (SNR)
+- Coefficient of variation
+- Near-flatline detection
+- Baseline drift index
+- Physiological band power ratios
+- HbO-HbR correlation analysis
+- Task-based: CNR (contrast-to-noise ratio), GoodEventFraction
+- Resting-state: Split-half reliability
 
 ## Data Structure
 
@@ -192,24 +428,6 @@ pip install -e ".[dev]"
 ### CI
 
 GitHub Actions runs on push/PR to `main`/`develop` with a matrix of 3 OS × Python 3.8–3.12 (excludes macos-3.12, windows-3.12). Pipeline includes test, lint, and coverage check (threshold: 35%).
-
-### Agent Guidelines
-
-If using AI coding agents, see [AGENTS.md](docs/en/contributing/agents.md) for repo-specific guidance on toolchain, architecture, testing, and common gotchas.
-
-## Documentation
-
-Comprehensive documentation is available in the `docs/` directory:
-
-- **[English Documentation](docs/en/README.md)** - Complete English documentation
-- **[中文文档](docs/zh/README.md)** - Chinese documentation
-
-The documentation includes:
-- Installation and quickstart guides
-- Module-specific guides (fNIRS, EEG, ECG, marker, quality)
-- API reference and architecture overview
-- Technical specifications and development guidelines
-- AI agent development guidelines
 
 ## License
 
