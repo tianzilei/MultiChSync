@@ -19,11 +19,10 @@ from .marker import (
     clean_marker_csv,
     clean_marker_folder,
     extract_marker_info,
+    generate_timeline_figures,
     clean_marker_folder,
 )
 from .marker.timeline_cropper import crop_timelines_to_shortest
-from .marker.matchcrop import matchcrop
-from .marker.matchcrop_aligned import matchcrop_aligned
 from .quality import (
     process_one_snirf,
     batch_process_snirf_folder,
@@ -449,6 +448,34 @@ def marker_info(args):
         sys.exit(1)
 
 
+def marker_timeline(args):
+    """处理marker timeline可视化生成命令"""
+    try:
+        from pathlib import Path
+
+        input_dir = Path(args.input_dir) if args.input_dir else Path("Data/marker/info")
+        output_dir = Path(args.output_dir) if args.output_dir else Path("Data/marker/timeline")
+
+        saved = generate_timeline_figures(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            dpi=args.dpi,
+            stack=args.stack,
+        )
+
+        print(f"Timeline可视化生成完成:")
+        print(f"  输入目录: {input_dir}")
+        print(f"  输出目录: {output_dir}")
+        print(f"  生成文件数: {len(saved)}")
+        print(f"  模式: {'stack (per-device)' if args.stack else 'combined'}")
+        for subj, path in sorted(saved.items()):
+            print(f"    {subj}: {path.name}")
+
+    except Exception as e:
+        print(f"Timeline可视化生成失败: {e}")
+        sys.exit(1)
+
+
 def marker_match(args):
     """处理多设备marker匹配命令"""
     try:
@@ -590,61 +617,75 @@ def marker_crop(args):
 
 
 def marker_matchcrop(args):
-    """处理matchcrop命令 - 裁剪多设备原始数据"""
-    try:
-        timeline_csv = Path(args.timeline_csv)
-        metadata_json = Path(args.metadata_json)
+    """处理matchcrop命令 - 基于对齐的时间线按session裁剪多设备数据
 
-        if not timeline_csv.exists():
-            raise FileNotFoundError(f"Timeline CSV文件不存在: {timeline_csv}")
-        if not metadata_json.exists():
-            raise FileNotFoundError(f"Metadata JSON文件不存在: {metadata_json}")
-
-        output_dir = Path(args.output_dir) if args.output_dir else timeline_csv.parent
-
-        result = matchcrop(
-            timeline_csv=timeline_csv,
-            metadata_json=metadata_json,
-            reference_device=args.reference,
-            output_dir=output_dir,
-            output_prefix=args.output_prefix,
-        )
-
-        print(f"MatchCrop完成!")
-        print(f"  参考设备: {result['reference_device']}")
-        print(f"  裁剪设备数: {len(result['cropped_devices'])}")
-        print(f"  输出目录: {output_dir}")
-        print(f"  输出文件:")
-        for name, path in result["output_files"].items():
-            print(f"    {name}: {path}")
-
-    except Exception as e:
-        print(f"MatchCrop失败: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
-
-
-def marker_matchcrop_aligned(args):
-    """处理matchcrop-aligned命令 - 基于对齐的时间线裁剪"""
+    支持三种模式:
+      1. 批处理(--input-dir): 扫描matching目录, 按session裁剪所有subject
+      2. 单subject按session(--json-path, 无start/end): 自动按session切分
+      3. 传统连续裁剪(--json-path + --start-time + --end-time): 保留向后兼容
+    """
     from pathlib import Path
-    from multichsync.marker import matchcrop_aligned
+    from multichsync.marker.matchcrop_aligned import (
+        matchcrop_aligned,
+        matchcrop_by_sessions,
+        batch_matchcrop_from_matching_dir,
+    )
 
     try:
-        json_path = Path(args.json_path)
+        # ── Mode 1: Batch from input-dir ──────────────────────────────
+        if args.input_dir:
+            result = batch_matchcrop_from_matching_dir(
+                matching_dir=args.input_dir,
+                output_dir=args.output_dir or "Data/matchcrop",
+                convert_base_dir="Data/convert",
+            )
+            print(f"\nBatch matchcrop complete!")
+            print(f"  Subjects processed: {len(result)}")
+            return
 
+        # ── Single JSON path modes ────────────────────────────────────
+        json_path = Path(args.json_path)
         if not json_path.exists():
             raise FileNotFoundError(f"Metadata JSON文件不存在: {json_path}")
+
+        # ── Mode 2: Session-based (no start/end provided) ─────────────
+        if args.start_time is None and args.end_time is None:
+            output_dir = (
+                Path(args.output_dir) if args.output_dir else
+                json_path.parent.parent / "matchcrop" / json_path.stem.replace("_metadata", "")
+            )
+            result = matchcrop_by_sessions(
+                json_path=json_path,
+                output_dir=output_dir,
+                convert_base_dir="Data/convert",
+            )
+            print(f"\nMatchCrop完成!")
+            print(f"  Subject: {result.get('subject_id', '?')}")
+            print(f"  参考设备: {result.get('reference_device', '?')}")
+            print(f"  Task: {result.get('taskname', '?')}")
+            n_ok = sum(
+                1 for s in result.get("sessions", {}).values()
+                for d in s.get("devices", {}).values()
+                if d.get("status") == "ok"
+            )
+            n_err = len(result.get("errors", []))
+            print(f"  成功裁剪: {n_ok} 个文件")
+            if n_err:
+                print(f"  错误: {n_err}")
+            return
+
+        # ── Mode 3: Legacy continuous crop (start/end required) ───────
+        if args.start_time is None or args.end_time is None:
+            raise ValueError("--start-time and --end-time are required for continuous crop mode")
 
         result = matchcrop_aligned(
             json_path=json_path,
             start_time=args.start_time,
             end_time=args.end_time,
-            taskname=args.taskname,
+            taskname=None,
         )
 
-        print(f"MatchCrop-Aligned完成!")
+        print(f"MatchCrop完成!")
         print(
             f"  裁剪时间范围: {result['crop_time_range'][0]:.3f}s - {result['crop_time_range'][1]:.3f}s"
         )
@@ -658,7 +699,7 @@ def marker_matchcrop_aligned(args):
                 print(f"    - {err}")
 
     except Exception as e:
-        print(f"MatchCrop-Aligned失败: {e}")
+        print(f"MatchCrop失败: {e}")
         import traceback
 
         traceback.print_exc()
@@ -793,6 +834,18 @@ def marker_traversal_match(args):
         match_traversal_cli(args)
     except Exception as e:
         print(f"Traversal matching failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def marker_basematch(args):
+    """Base matching handler — length-first, marker-second alignment."""
+    try:
+        from multichsync.marker.traversal_matcher import match_baseline_cli
+        match_baseline_cli(args)
+    except Exception as e:
+        print(f"Base matching failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -1520,6 +1573,25 @@ def main():
     )
     marker_info_parser.set_defaults(func=marker_info)
 
+    # marker timeline
+    marker_timeline_parser = marker_subparsers.add_parser(
+        "timeline", help="根据marker info报告生成多设备timeline可视化图"
+    )
+    marker_timeline_parser.add_argument(
+        "--input-dir", "-i", help="输入目录路径（包含subject_*_marker_report.csv，默认：Data/marker/info）"
+    )
+    marker_timeline_parser.add_argument(
+        "--output-dir", "-o", help="输出目录路径（默认：Data/marker/timeline）"
+    )
+    marker_timeline_parser.add_argument(
+        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+    )
+    marker_timeline_parser.add_argument(
+        "--stack", action="store_true",
+        help="每个设备只显示一条分段timeline，各session按文件名升序首尾相接排列（默认：每个session显示独立条形）"
+    )
+    marker_timeline_parser.set_defaults(func=marker_timeline)
+
     # marker match
     marker_match_parser = marker_subparsers.add_parser(
         "match", help="匹配多设备marker事件，生成共识时间线"
@@ -1597,56 +1669,44 @@ def main():
     )
     marker_crop_parser.set_defaults(func=marker_crop)
 
-    # marker matchcrop subcommand - added to marker subparser
+    # marker matchcrop subcommand - replaces both old matchcrop and matchcrop-aligned
     marker_matchcrop_parser = marker_subparsers.add_parser(
-        "matchcrop", help="裁剪多设备原始数据（基于匹配后的timeline）"
+        "matchcrop",
+        help="按session裁剪多设备原始数据（自动确定taskname和参考设备）",
+    )
+    # Input: mutually exclusive batch vs single
+    input_group_mc = marker_matchcrop_parser.add_mutually_exclusive_group()
+    input_group_mc.add_argument(
+        "--input-dir", "-i",
+        help="matching目录路径（批处理模式，扫描该目录下所有*_metadata.json）"
+    )
+    input_group_mc.add_argument(
+        "--json-path", "-j",
+        help="单个matched_metadata.json文件路径（单subject模式）"
     )
     marker_matchcrop_parser.add_argument(
-        "--timeline-csv", "-t", required=True, help="匹配后的timeline CSV文件路径"
+        "--output-dir", "-o",
+        help="输出目录路径（批处理默认: Data/matchcrop，单subject默认: matching/../matchcrop/subject-{id}/）"
     )
     marker_matchcrop_parser.add_argument(
-        "--metadata-json", "-m", required=True, help="匹配后的metadata JSON文件路径"
+        "--stacked-csv",
+        help="stacked_timeline CSV路径（可选，默认从metadata同目录自动查找）"
     )
     marker_matchcrop_parser.add_argument(
-        "--reference", "-r", required=True, help="参考设备名称"
-    )
-    marker_matchcrop_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：与timeline CSV同目录）"
-    )
-    marker_matchcrop_parser.add_argument(
-        "--output-prefix",
-        "-p",
-        default="matchcrop",
-        help="输出文件前缀（默认：matchcrop）",
-    )
-    marker_matchcrop_parser.set_defaults(func=marker_matchcrop)
-
-    # marker matchcrop-aligned subcommand - added to marker subparser
-    marker_matchcrop_aligned_parser = marker_subparsers.add_parser(
-        "matchcrop-aligned",
-        help="基于对齐的时间线裁剪多设备原始数据（使用共识时间范围）",
-    )
-    marker_matchcrop_aligned_parser.add_argument(
-        "--json-path", "-j", required=True, help="matched_metadata.json文件路径"
-    )
-    marker_matchcrop_aligned_parser.add_argument(
         "--start-time",
         "-s",
         type=float,
-        required=True,
-        help="裁剪起始时间（共识时间轴，必填，例如：0.0）",
+        default=None,
+        help="裁剪起始时间（共识时间轴，不指定时自动按session切分）",
     )
-    marker_matchcrop_aligned_parser.add_argument(
+    marker_matchcrop_parser.add_argument(
         "--end-time",
         "-e",
         type=float,
-        required=True,
-        help="裁剪结束时间（共识时间轴，必填，例如：300.0）",
+        default=None,
+        help="裁剪结束时间（共识时间轴，不指定时自动按session切分）",
     )
-    marker_matchcrop_aligned_parser.add_argument(
-        "--taskname", "-t", required=True, help="输出文件的新task名称（必填）"
-    )
-    marker_matchcrop_aligned_parser.set_defaults(func=marker_matchcrop_aligned)
+    marker_matchcrop_parser.set_defaults(func=marker_matchcrop)
 
     # marker manual-match subcommand - added to marker subparser
     marker_manual_match_parser = marker_subparsers.add_parser(
@@ -1700,18 +1760,35 @@ def main():
     )
     input_group_trav = marker_traversal_parser.add_mutually_exclusive_group(required=True)
     input_group_trav.add_argument(
+        "--info-dir",
+        help="Directory containing subject_*_marker_report.csv (output of `marker info`).  "
+             "Enables stacked-timeline matching: sessions per device are concatenated with "
+             "time offsets, the longest-duration device is the reference (±10 s tolerance), "
+             "and each shorter device is matched via iterative shift refinement."
+    )
+    input_group_trav.add_argument(
         "--input-dir",
-        help="Directory containing marker CSV files"
+        help="Directory containing marker CSV files (legacy mode)"
     )
     input_group_trav.add_argument(
         "--input-files",
         nargs="+",
-        help="Explicit list of marker CSV file paths, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg)"
+        help="Explicit list of marker CSV file paths, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg) (legacy mode)"
     )
     marker_traversal_parser.add_argument(
         "--device-names",
         nargs="+",
-        help="Device names matching the order of --input-files"
+        help="Device names matching the order of --input-files (legacy mode)"
+    )
+    marker_traversal_parser.add_argument(
+        "--marker-base-dir",
+        default="Data/marker",
+        help="Marker CSV base directory, used with --info-dir (default: Data/marker)"
+    )
+    marker_traversal_parser.add_argument(
+        "--convert-base-dir",
+        default="Data/convert",
+        help="Converted data base directory, used with --info-dir (default: Data/convert)"
     )
     marker_traversal_parser.add_argument(
         "--output-dir",
@@ -1725,8 +1802,9 @@ def main():
     marker_traversal_parser.add_argument(
         "--max-time-diff",
         type=float,
-        default=3.0,
-        help="Max time difference (s) for a valid match (default: 3.0)"
+        default=10.0,
+        help="Max time difference (s) for a valid match; also sets the ± tolerance "
+             "for the reference duration window (default: 10.0)"
     )
     marker_traversal_parser.add_argument(
         "--gap-penalty",
@@ -1756,7 +1834,85 @@ def main():
         action="store_true",
         help="Skip saving timeline CSV"
     )
+    marker_traversal_parser.add_argument(
+        "--no-fig",
+        action="store_true",
+        help="Skip saving matched timeline figure (PNG)"
+    )
+    marker_traversal_parser.add_argument(
+        "--no-merge-sessions",
+        action="store_true",
+        help="Disable session merging; treat each file as a separate device (legacy mode, default: merge sessions per device type)"
+    )
     marker_traversal_parser.set_defaults(func=marker_traversal_match)
+
+    # marker basematch
+    marker_basematch_parser = marker_subparsers.add_parser(
+        "basematch",
+        help="Match markers by session-length alignment first, then by markers. "
+             "Groups sessions across devices to align start/end times, distributes "
+             "duration differences as gaps between sessions, then fine-tunes middle "
+             "sessions with traversal search."
+    )
+    bg = marker_basematch_parser.add_mutually_exclusive_group(required=True)
+    bg.add_argument(
+        "--info-dir",
+        help="Directory containing subject_*_marker_report.csv (output of `marker info`)."
+    )
+    bg.add_argument(
+        "--input-dir",
+        help="Directory containing marker CSV files"
+    )
+    bg.add_argument(
+        "--input-files",
+        nargs="+",
+        help="Explicit list of marker CSV file paths"
+    )
+    marker_basematch_parser.add_argument(
+        "--device-names", nargs="+",
+        help="Device names matching the order of --input-files"
+    )
+    marker_basematch_parser.add_argument(
+        "--marker-base-dir", default="Data/marker",
+        help="Marker CSV base directory, used with --info-dir (default: Data/marker)"
+    )
+    marker_basematch_parser.add_argument(
+        "--convert-base-dir", default="Data/convert",
+        help="Converted data base directory, used with --info-dir (default: Data/convert)"
+    )
+    marker_basematch_parser.add_argument(
+        "--output-dir", default="Data/matching",
+        help="Output directory (default: Data/matching)"
+    )
+    marker_basematch_parser.add_argument(
+        "--output-prefix", default="basematched",
+        help="Output file prefix (default: basematched)"
+    )
+    marker_basematch_parser.add_argument(
+        "--max-time-diff", type=float, default=10.0,
+        help="Max time difference (s) for a valid match (default: 10.0)"
+    )
+    marker_basematch_parser.add_argument(
+        "--gap-penalty", type=float, default=1e6,
+        help="Penalty cost for gaps (default: 1e6)"
+    )
+    marker_basematch_parser.add_argument(
+        "--rng-seed", type=int, default=42,
+        help="Random seed (default: 42)"
+    )
+    marker_basematch_parser.add_argument(
+        "--no-json", action="store_true",
+        help="Skip saving metadata JSON"
+    )
+    marker_basematch_parser.add_argument(
+        "--no-csv", action="store_true",
+        help="Skip saving timeline CSV"
+    )
+    marker_basematch_parser.add_argument(
+        "--no-fig", action="store_true",
+        help="Skip saving matched timeline figure"
+    )
+    marker_basematch_parser.set_defaults(func=marker_basematch)
 
     # quality subcommand
     quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")

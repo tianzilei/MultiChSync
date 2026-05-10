@@ -142,6 +142,10 @@ multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interv
 
 # Generate subject-level marker reports
 multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+
+# Generate per-subject multi-device timeline figures from info reports
+# Stack mode: separate figure per device per subject, sorted by filename
+multichsync marker timeline --input-dir Data/marker/info --output-dir Data/marker/timeline --stack
 ```
 
 ### Step 3: Synchronize Markers Across Devices
@@ -153,7 +157,17 @@ multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --outp
 # Manually apply offset adjustments to matched markers
 multichsync marker manual-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --offsets "[1.5, -0.3, 0]" --output-dir Data/matching --prefix manual
 
-# Brute-force shift traversal matching (minimises mean per-marker distance)
+# --- Base match (recommended — session-length-first) ---
+# Groups sessions across devices by duration, aligns start/end times,
+# distributes gaps between sessions, then fine-tunes middle sessions.
+multichsync marker basematch --info-dir Data/marker/info
+
+# --- Traversal shift matching (alternative) ---
+
+# Mode A (stacked-timeline): read from marker info reports
+multichsync marker traversal-match --info-dir Data/marker/info
+
+# Mode B (legacy): BIDS wildcard files (each file = one device)
 multichsync marker traversal-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching
 
 # Supported methods (marker match): hungarian (default), mincostflow, sinkhorn
@@ -163,9 +177,24 @@ multichsync marker traversal-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_
 ### Step 4: Crop Aligned Data
 
 ```bash
-# Crop all device data using consensus time range
-multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname synchronized_task
+# ── Mode A (recommended): Batch crop by sessions ─────────────────────
+# Scans Data/matching/ for all basematched/traversal-match outputs,
+# picks the device with the most sessions as reference per subject,
+# auto-detects taskname from the original BIDS filenames, and saves
+# per-session output.  Devices that can't be time-cropped (e.g. short
+# eeg sessions) are copied as-is so every device has output.
+#   Data/matchcrop/subject-{id}/ses-{N}/sub-{id}_ses-{N}_task-{auto}_{type}.ext
+multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
+
+# ── Mode B: Single subject, auto per-session split ──────────────────
+# No --start-time / --end-time / --taskname needed — all auto-detected.
+# Reference device = device with most sessions (falls back if shift >1000s).
+multichsync marker matchcrop --json-path Data/matching/basematched_subject-001_metadata.json
+
+# ── Mode C: Legacy continuous crop (requires start/end) ─────────────
+multichsync marker matchcrop --json-path Data/matching/traversal_matched_subject-001_metadata.json --start-time 0.0 --end-time 300.0
 ```
+
 
 ### Step 5: Assess fNIRS Quality
 
@@ -193,14 +222,19 @@ multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG
 multichsync marker batch --types fnirs,ecg,eeg
 multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0
 
-# 3. Generate marker reports
+# 3. Generate marker reports and timeline visualizations
 multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+multichsync marker timeline --input-dir Data/marker/info --output-dir Data/marker/timeline
 
-# 4. Match markers
-multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching --method hungarian
+# 4. Match markers (stacked-timeline mode — recommended)
+# Option A: length-first base matching (recommended)
+multichsync marker basematch --info-dir Data/marker/info
 
-# 5. Crop aligned data
-multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname synchronized
+# Option B: traversal shift matching (alternative)
+multichsync marker traversal-match --info-dir Data/marker/info
+
+# 5. Crop by session (auto‑detects ref device, taskname; copies short files as‑is)
+multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
 
 # 6. Quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
@@ -235,17 +269,38 @@ multichsync marker extract --input Data/raw/fnirs/sub-001_task-rest_fnirs.csv --
 # Clean markers (deduplicate, filter quality, remove start marker at t=0)
 multichsync marker clean --input Data/marker --inplace --min-rows 2 --min-interval 1.0 --remove-start
 
+# Generate subject-level marker info reports (scans Data/convert/ only)
+multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+
+# Generate combined timeline figure (all devices in subplot rows, sorted by sequence)
+multichsync marker timeline --input-dir Data/marker/info --output-dir Data/marker/timeline
+
+# Generate stacked timeline figures (one figure per device, sorted by filename)
+multichsync marker timeline --input-dir Data/marker/info --output-dir Data/marker/timeline --stack
+
 # Match markers across devices using BIDS wildcard files (multiple algorithms available)
 multichsync marker match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --output-dir Data/matching --method hungarian
 
 # Crop matched timeline to shortest sequence
 multichsync marker crop --timeline-csv Data/matching/matched_timeline.csv --metadata-json Data/matching/matched_metadata.json --output-prefix cropped
 
-# Crop matched data using aligned timelines
+# Crop matched data using aligned timelines (legacy, requires --reference)
 multichsync marker matchcrop --timeline-csv Data/matching/matched_timeline.csv --metadata-json Data/matching/matched_metadata.json --reference sub-060_ses-01_task-rest_fnirs --output-dir Data/matchcrop
 
-# Crop all device data using consensus time range
-multichsync marker matchcrop-aligned --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0 --taskname newtask
+# Auto session-split (recommended) — picks ref device, detects taskname from files
+multichsync marker matchcrop --json-path Data/matching/basematched_subject-001_metadata.json
+
+# Batch crop by sessions — scans matching dir, auto-detects everything
+multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
+
+# Legacy continuous crop (requires --start-time / --end-time)
+multichsync marker matchcrop --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0
+
+# Session‑based crop fallback: devices whose files are too short (e.g. eeg
+# sessions < 60 s vs fnirs sessions > 300 s) are *copied as‑is* so every
+# device always has output.  The reference device is automatically set to
+# the device with the most sessions (down‑graded if its alignment shift
+# exceeds 1000 s, i.e. a basematch artefact).
 
 # Supported matching methods (use with --method):
 #   hungarian    - Hungarian algorithm (default)
@@ -261,6 +316,106 @@ finds the alignment that minimises the **mean per-marker pairwise distance**
 across devices, and explicitly handles gaps where a device has no
 corresponding marker.
 
+The tool supports **two input modes**:
+
+---
+
+#### Mode A: Stacked-timeline matching (recommended — ``--info-dir``)
+
+Reads the output of ``multichsync marker info`` and performs **session-aware
+stacked-timeline matching**.  This mode handles multi-session devices
+correctly by concatenating sessions end-to-end (like ``timeline --stack``).
+
+```bash
+# 1. Generate subject-level marker info reports
+multichsync marker info --input-dir Data/marker --output-dir Data/marker/info
+
+# 2. Stacked-timeline traversal match (default ±10 s tolerance)
+multichsync marker traversal-match --info-dir Data/marker/info
+
+# With explicit paths:
+multichsync marker traversal-match --info-dir Data/marker/info --marker-base-dir Data/marker --convert-base-dir Data/convert --max-time-diff 10.0 --output-dir Data/matching --output-prefix my_subject
+```
+
+**How it works:**
+1. **Stack sessions** — for each device, all sessions are sorted by
+   ``sequence_id`` and their markers are time-offset by the cumulative sum
+   of previous sessions' recording durations, forming a continuous
+   **stacked timeline** (no reordering, no deletion).
+2. **Reference selection** — the device with the **longest total duration**
+   (sum of all its sessions) is selected as the reference.  The *actual
+   total duration* is set to reference duration + *max_time_diff* (±10 s
+   tolerance by default).
+3. **Iterative shift refinement** — for each shorter device, a coarse-to-fine
+   traversal searches all possible marker-index shifts.  The first round
+   covers the full range; subsequent rounds progressively narrow the window
+   around the best shift, stopping when no further improvement is found.
+4. **Drift estimation** — after matching, a linear offset (median of
+   matched-pair time differences) is stored per device so that downstream
+   ``matchcrop-aligned`` can crop raw data correctly.
+
+**Per-subject processing:** each ``subject_*_marker_report.csv`` is matched
+independently.  Output files are named with the subject ID:
+
+```
+{prefix}_subject-{id}_timeline.csv
+{prefix}_subject-{id}_stacked_timeline.csv
+{prefix}_subject-{id}_metadata.json
+{prefix}_subject-{id}_matched_timeline.png
+```
+
+| File | Description |
+|------|-------------|
+| ``{prefix}_subject-{id}_timeline.csv`` | Matched consensus groups (one row per reference marker) |
+| ``{prefix}_subject-{id}_stacked_timeline.csv`` | Same groups annotated with ``_session`` columns showing which session each matched marker belongs to |
+| ``{prefix}_subject-{id}_metadata.json`` | **matchcrop compatible** — consumed by ``multichsync marker matchcrop`` (contains ``device_info`` with ``converted_data_file_path`` & ``drift_correction``, and ``timeline_metadata`` with ``consensus_time_range``) |
+| ``{prefix}_subject-{id}_matched_timeline.png`` | **Matched timeline figure** — each device shown as a horizontal track with session segments, marker dots (filled = matched, hollow = gap), thin match lines between adjacent devices, and match statistics in the title |
+
+The matched timeline figure provides a quick visual overview of the
+alignment quality:
+- **Session segments** — coloured bars stacked end-to-end per device
+  (gap sessions with 0 markers are shown with reduced opacity)
+- **Marker dots** — filled circles for matched markers, hollow circles
+  for gaps (unmatched reference markers)
+- **Match lines** — thin gray lines connect matched markers between
+  adjacent device rows (subsampled to at most 80 lines to avoid clutter)
+- **Reference highlight** — the reference device track is marked with
+  ``★REF`` and a coloured border
+- **Statistics** — figure title shows ``matched / total`` groups and
+  ``mean distance``; each device track shows its individual matched count
+
+The per-subject metadata JSON can be consumed directly by
+``multichsync marker matchcrop`` in either **session-split** or
+**legacy continuous** mode:
+
+```bash
+# Session-split (recommended — auto time ranges & taskname from data)
+multichsync marker matchcrop  --json-path Data/matching/traversal_matched_subject-001_metadata.json
+
+# Legacy continuous crop (requires explicit start/end)
+multichsync marker matchcrop  --json-path Data/matching/traversal_matched_subject-001_metadata.json \
+  --start-time 0.0 --end-time 300.0
+```
+
+Both ``basematched`` and ``traversal_match`` metadata JSONs are supported.
+The **taskname** is always auto-detected from the original BIDS filenames
+(e.g. ``_task-rest_`` → ``"rest"``).
+
+**Key parameters:**
+- ``--max-time-diff`` — maximum time difference (s) for a valid match;
+  also sets the ± tolerance for the reference duration window (default: 10.0)
+- ``--gap-penalty`` — cost applied to each unmatched marker (default: 1e6)
+- ``--random-restarts`` — random offset candidates for initial traversal (default: 5)
+- ``--marker-base-dir`` — where marker CSV files live (default: ``Data/marker``)
+- ``--convert-base-dir`` — where converted data files live (default: ``Data/convert``)
+- ``--no-fig`` — skip generating the matched timeline PNG (default: generate)
+
+---
+
+#### Mode B: Legacy file-list mode (``--input-files`` / ``--input-dir``)
+
+Each file is treated as a separate device (optionally merged by session).
+
 ```bash
 # Traversal match from BIDS wildcard files
 multichsync marker traversal-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg --max-time-diff 2.0
@@ -270,9 +425,12 @@ multichsync marker traversal-match --input-files Data/marker/fnirs/*_marker.csv 
 
 # Traversal match from a directory of marker CSVs
 multichsync marker traversal-match --input-dir Data/marker --max-time-diff 3.0 --gap-penalty 1000000 --random-restarts 10
+
+# Disable session merging (each file = separate device)
+multichsync marker traversal-match --input-dir Data/marker --no-merge-sessions
 ```
 
-**How it works:**
+**How it works (legacy):**
 1. **Anchor** — the device with the most markers is used as the reference
 2. **Shift traversal** — every possible alignment offset between the anchor and each other device is evaluated
 3. **Distance scoring** — each offset is scored by the mean absolute time difference across all matched pairs; gaps (unmatched markers) add a configurable penalty
@@ -280,16 +438,107 @@ multichsync marker traversal-match --input-dir Data/marker --max-time-diff 3.0 -
 5. **Output** — timeline CSV with per-group distances, plus a metadata JSON with gap info and shift history
 
 **Key parameters:**
-- `--max-time-diff` — maximum time difference (s) for a valid match (default: 3.0)
-- `--gap-penalty` — cost applied to each unmatched marker (default: 1e6)
-- `--random-restarts` — random offset candidates for robustness (default: 5)
+- ``--max-time-diff`` — maximum time difference (s) for a valid match (default: 3.0)
+- ``--gap-penalty`` — cost applied to each unmatched marker (default: 1e6)
+- ``--random-restarts`` — random offset candidates for robustness (default: 5)
+- ``--no-merge-sessions`` — disable automatic session merging (default: merge)
 
-**Python API:**
+---
+
+### Base Match (Length-First Alignment — ``multichsync marker basematch``)
+
+A **session-length-first** matching strategy: instead of searching for marker-index
+shifts, it groups sessions across devices to align their **start and end times**,
+distributes duration differences as **gaps between sessions**, then fine-tunes
+middle session positions with a light traversal.
+
+```bash
+# From marker info reports (recommended)
+multichsync marker basematch --info-dir Data/marker/info
+
+# With explicit paths:
+multichsync marker basematch --info-dir Data/marker/info  --marker-base-dir Data/marker \
+    --convert-base-dir Data/convert  --max-time-diff 10.0 \
+    --output-dir Data/matching  --output-prefix basematched
+```
+
+**How it works:**
+
+```
+┌─ Step 1: Stack timelines ──────────────────────────────────┐
+│  Same as traversal-match — sessions per device stacked      │
+│  end-to-end with time offsets.                              │
+└─────────────────────────────────────────────────────────────┘
+                              ▼
+┌─ Step 2: Align start / end ─────────────────────────────────┐
+│  First session starts aligned at t=0 for all devices.       │
+│  Last session ends aligned at t = max_total_duration.        │
+│  (Proportional stretching if durations differ).             │
+└─────────────────────────────────────────────────────────────┘
+                              ▼
+┌─ Step 3: Group sessions by length ──────────────────────────┐
+│  For each reference session, greedily group consecutive     │
+│  sessions from other devices whose total duration           │
+│  approximates the reference session (±5 s).                 │
+│                                                              │
+│  Example — ref has [60s, 40s], other has [25, 30, 45]:      │
+│    Group 1: session 0 + 1 (25+30=55 ≈ 60)                   │
+│    Group 2: session 2 (45 ≈ 40)                             │
+└─────────────────────────────────────────────────────────────┘
+                              ▼
+┌─ Step 4: Distribute gaps between sessions ──────────────────┐
+│  Each group's total duration is adjusted to match the ref    │
+│  session duration.  The difference becomes **gaps** placed   │
+│  BETWEEN sessions (never inside a session).                 │
+│                                                              │
+│   ┌──────┐  ← gap →  ┌──────┐  ← gap →  ┌──────┐          │
+│   │ Sess1 │           │ Sess2 │           │ Sess3 │          │
+│   └──────┘           └──────┘           └──────┘          │
+│   start fixed                                     end fixed │
+└─────────────────────────────────────────────────────────────┘
+                              ▼
+┌─ Step 5: Traverse middle sessions ──────────────────────────┐
+│  For groups with 3+ sessions, fine-tune the position of     │
+│  middle sessions (±3 s in 0.2 s steps) to minimise marker   │
+│  pairwise distance.  First and last sessions stay fixed.    │
+└─────────────────────────────────────────────────────────────┘
+                              ▼
+┌─ Step 6: Match markers ─────────────────────────────────────┐
+│  Greedy nearest-neighbour matching on the repositioned       │
+│  timeline axis. Single-session devices use centre-alignment. │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Output files** (same format as ``traversal-match``):
+
+```
+{prefix}_subject-{id}_timeline.csv
+{prefix}_subject-{id}_stacked_timeline.csv
+{prefix}_subject-{id}_metadata.json
+{prefix}_subject-{id}_matched_timeline.png
+```
+
+**Key parameters:**
+- ``--max-time-diff`` — maximum time difference (s) for a valid match (default: 10.0)
+- ``--gap-penalty`` — cost applied to each unmatched marker (default: 1e6)
+- ``--marker-base-dir`` — where marker CSV files live (default: ``Data/marker``)
+- ``--convert-base-dir`` — where converted data files live (default: ``Data/convert``)
+- ``--no-fig`` — skip generating the matched timeline PNG (default: generate)
+
+---
+
+#### Python API
+
 ```python
-from multichsync.marker import match_traversal, match_traversal_from_files
+from multichsync.marker import (
+    match_traversal,
+    match_traversal_from_files,
+    match_traversal_from_info,
+    match_baseline,
+)
 import numpy as np
 
-# From in-memory arrays
+# --- Low-level: in-memory arrays ---
 result = match_traversal({
     "fnirs": np.array([0.1, 10.2, 20.1, 30.0, 40.3]),
     "ecg":   np.array([0.0, 10.0, 20.0, 30.1, 40.0, 50.2]),
@@ -300,12 +549,62 @@ print(f"Mean distance: {result.mean_distance:.3f}s")
 print(f"Total distance: {result.total_distance:.3f}s")
 print(f"Gaps: {result.gaps}")
 
-# From CSV files
+# --- From CSV files (legacy) ---
 result = match_traversal_from_files(
     ["fnirs_marker.csv", "ecg_marker.csv", "eeg_marker.csv"],
     device_names=["fnirs", "ecg", "eeg"],
     output_dir="Data/matching",
     output_prefix="traversal_matched",
+)
+
+# --- Stacked-timeline from marker info (recommended) ---
+# Returns a dict: {subject_id: TraversalMatchResult}
+# Per-subject output files are saved automatically.
+results = match_traversal_from_info(
+    "Data/marker/info",
+    marker_base_dir="Data/marker",
+    convert_base_dir="Data/convert",
+    max_time_diff=10.0,
+    output_dir="Data/matching",
+    output_prefix="traversal_matched",
+)
+
+# Iterate per-subject results
+for subject_id, result in results.items():
+    print(f"{subject_id}: ref={result.anchor_name}, "
+          f"mean_dist={result.mean_distance:.3f}s")
+
+# ── Per-session split (recommended) ──────────────────────────────────
+from multichsync.marker.matchcrop_aligned import matchcrop_by_sessions
+
+result = matchcrop_by_sessions(
+    json_path="Data/matching/basematched_subject-001_metadata.json",
+    output_dir="Data/matchcrop/subject-001",
+)
+# Taskname auto-detected (e.g. "rest" from _task-rest_).
+# Devices too short for the session range are copied as-is.
+for ses, sres in result["sessions"].items():
+    for dev, dres in sres["devices"].items():
+        status = dres["status"]  # "ok" | "copied_asis" | "skipped_*" | "error"
+        print(f"  {ses}/{dev}: {status}")
+
+# ── Batch processing all subjects ────────────────────────────────────
+from multichsync.marker.matchcrop_aligned import batch_matchcrop_from_matching_dir
+
+results = batch_matchcrop_from_matching_dir(
+    matching_dir="Data/matching",
+    output_dir="Data/matchcrop",
+)
+# Batch report at Data/matchcrop/crop_report.json contains:
+#   devices_ok, devices_copied, devices_skipped, devices_failed
+
+# ── Legacy continuous crop (requires start/end) ─────────────────────
+from multichsync.marker.matchcrop_aligned import matchcrop_aligned
+matchcrop_aligned(
+    json_path="Data/matching/traversal_matched_subject-001_metadata.json",
+    start_time=0.0,
+    end_time=300.0,
+    taskname=None,  # auto-detected
 )
 ```
 
@@ -354,6 +653,17 @@ Data/
 │   ├── eeg/
 │   └── info/         # Subject reports
 ├── matching/         # Cross-device matching results
+├── matchcrop/        # Per-session device data (cropped or copied as-is)
+│   ├── subject-{id}/
+│   │   ├── ses-01/
+│   │   │   ├── sub-{id}_ses-01_task-{task}_fnirs.snirf
+│   │   │   ├── sub-{id}_ses-01_task-{task}_ecg.csv
+│   │   │   ├── sub-{id}_ses-01_task-{task}_eeg.vhdr
+│   │   │   ├── sub-{id}_ses-01_task-{task}_eeg.vmrk
+│   │   │   ├── sub-{id}_ses-01_task-{task}_eeg.eeg
+│   │   │   └── crop_metadata.json
+│   │   └── ses-02/ ...
+│   └── crop_report.json
 └── quality/          # fNIRS quality reports
 ```
 

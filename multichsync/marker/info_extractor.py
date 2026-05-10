@@ -679,36 +679,10 @@ def find_data_files_for_marker(marker_filename: str) -> List[Path]:
         )
         possible_paths.extend(eeg_files)
 
-    # PRIORITY 2: Then check raw data directories (as fallback)
-    # fNIRS raw data
-    raw_fnirs_dir = Path("Data/raw/fnirs")
-    if raw_fnirs_dir.exists():
-        # Look for .TXT files (Shimadzu/NIRS-SPM format)
-        possible_paths.append(raw_fnirs_dir / f"{base_name}.TXT")
-        possible_paths.append(raw_fnirs_dir / f"{base_name}.txt")
-
-    # ECG raw data
-    raw_ecg_dir = Path("Data/raw/ECG")
-    if raw_ecg_dir.exists():
-        # Look for .acq files (Biopac format)
-        # Use ecg_base_name (without _input suffix) to match actual file naming
-        # For: sub-060_ses-01_task-rest_input_marker.csv
-        # ecg_base_name = sub-060_ses-01_task-rest (strips _input suffix)
-        # Should match: sub-060_ses-01_task-rest_ecg.acq
-        possible_paths.append(raw_ecg_dir / f"{ecg_base_name}_ecg.acq")
-        possible_paths.append(raw_ecg_dir / f"{ecg_base_name}_ecg.ACQ")
-        possible_paths.append(raw_ecg_dir / f"{ecg_base_name}.acq")
-        possible_paths.append(raw_ecg_dir / f"{ecg_base_name}.ACQ")
-
-    # EEG: Search in raw EEG directories using exact stem matching
-    raw_eeg_dir = Path("Data/raw/EEG")
-    if raw_eeg_dir.exists():
-        eeg_extensions = [".set", ".vhdr", ".edf", ".eeg", ".fdt"]
-        # Search recursively in all raw EEG subdirectories
-        eeg_files = _find_files_by_exact_stem(raw_eeg_dir, eeg_extensions, base_name)
-        possible_paths.extend(eeg_files)
-
     # Return all existing paths in priority order
+    # Note: Only Data/convert/ directories are searched. Raw data directories
+    # (Data/raw/) are intentionally excluded — marker info should only match
+    # against converted data files.
     existing_paths = []
     seen_paths = set()
 
@@ -883,7 +857,8 @@ def get_data_file_duration(data_file: Path) -> Optional[float]:
 
 def scan_data_files(base_dir: Optional[Union[str, Path]] = None) -> List[Dict]:
     """
-    Scan Data/convert/ and Data/raw/ directories recursively for supported data files.
+    Scan Data/convert/ directory recursively for supported data files.
+    Data/raw/ is intentionally excluded — only converted data should be matched.
 
     Supported file extensions per modality:
     - fNIRS: .snirf, .TXT, .txt
@@ -916,9 +891,13 @@ def scan_data_files(base_dir: Optional[Union[str, Path]] = None) -> List[Dict]:
     base_dir = Path(base_dir)
 
     # Mapping of device to supported extensions (case-insensitive)
+    # BrainVision format uses .vhdr (header) + .vmrk (markers) + .eeg (data);
+    # only .vhdr is the primary entry point.  .eeg and .fdt are secondary
+    # binary data files for BrainVision / EEGLAB and must not be scanned
+    # separately or they double-count every recording.
     device_extensions = {
         "fnirs": {".snirf", ".txt"},
-        "eeg": {".set", ".vhdr", ".edf", ".eeg", ".fdt"},
+        "eeg": {".set", ".vhdr", ".edf"},
         "ecg": {".csv", ".acq"},
     }
     # All supported extensions (lowercase for comparison)
@@ -929,9 +908,9 @@ def scan_data_files(base_dir: Optional[Union[str, Path]] = None) -> List[Dict]:
     # We'll handle case-insensitive matching by converting extension to lowercase
 
     # Directories to scan relative to base_dir
+    # Only scan Data/convert/ — raw data should not be matched for marker info
     scan_dirs = [
         base_dir / "Data" / "convert",
-        base_dir / "Data" / "raw",
     ]
 
     results = []

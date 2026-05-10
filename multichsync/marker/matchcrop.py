@@ -25,14 +25,23 @@ DATA_PATH_MAP = {
 def detect_device_type(device_name: str) -> str:
     """从设备名称检测设备类型"""
     device_name_lower = device_name.lower()
-    if "_input" in device_name_lower or "_ecg" in device_name_lower:
+    # Check for BIDS suffix first (e.g. "sub-101_ses-01_task-rest_fnirs")
+    if "_ecg" in device_name_lower:
         return "ecg"
     elif "_eeg" in device_name_lower:
         return "eeg"
     elif "_fnirs" in device_name_lower:
         return "fnirs"
-    else:
-        raise ValueError(f"无法识别设备类型: {device_name}")
+    elif "_input" in device_name_lower:
+        return "ecg"
+    # Bare device names (from stacked_timeline columns)
+    if device_name_lower == "fnirs":
+        return "fnirs"
+    elif device_name_lower == "ecg":
+        return "ecg"
+    elif device_name_lower == "eeg":
+        return "eeg"
+    raise ValueError(f"无法识别设备类型: {device_name}")
 
 
 def find_raw_data_file(device_name: str, device_type: str) -> Optional[Path]:

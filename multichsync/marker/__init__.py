@@ -17,6 +17,10 @@ from .info_extractor import (
     extract_marker_info,
 )
 
+from .timeline import (
+    generate_timeline_figures,
+)
+
 from .matcher import (
     DriftResult,
     MatchConfidence,
@@ -28,6 +32,8 @@ from .matcher import (
 
 from .matchcrop_aligned import (
     matchcrop_aligned,
+    matchcrop_by_sessions,
+    batch_matchcrop_from_matching_dir,
     calculate_aligned_time_range,
     apply_drift_correction,
     rename_bids_task,
@@ -47,6 +53,8 @@ from .traversal_matcher import (
     TraversalMatchResult,
     match_traversal,
     match_traversal_from_files,
+    match_traversal_from_info,
+    match_baseline,
 )
 
 __all__ = [
@@ -58,6 +66,7 @@ __all__ = [
     "clean_marker_csv",
     "clean_marker_folder",
     "extract_marker_info",
+    "generate_timeline_figures",
     "DriftResult",
     "MatchConfidence",
     "DeviceInfo",
@@ -65,6 +74,8 @@ __all__ = [
     "load_marker_csv_enhanced",
     "match_multiple_files_enhanced",
     "matchcrop_aligned",
+    "matchcrop_by_sessions",
+    "batch_matchcrop_from_matching_dir",
     "calculate_aligned_time_range",
     "apply_drift_correction",
     "rename_bids_task",
@@ -79,4 +90,6 @@ __all__ = [
     "TraversalMatchResult",
     "match_traversal",
     "match_traversal_from_files",
+    "match_traversal_from_info",
+    "match_baseline",
 ]
