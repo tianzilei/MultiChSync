@@ -39,7 +39,7 @@ def batch_convert_fnirs_to_snirf(input_dir, src_coords_csv, det_coords_csv, outp
                 )
                 converted_files.append(output_path)
             except Exception as e:
-                print(f"转换失败 {file}: {e}")
+                print(f"Conversion failed {file}: {e}")
     
-    print(f"\n共转换 {len(converted_files)} 个文件")
+    print(f"\nTotal converted: {len(converted_files)} files")
     return converted_files

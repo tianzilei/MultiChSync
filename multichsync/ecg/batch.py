@@ -70,12 +70,12 @@ def batch_convert_acq_to_csv(input_dir: str,
                     )
                 
                 converted_files.append(result)
-                print(f"转换成功: {filename}")
+                print(f"Conversion successful: {filename}")
                 
             except Exception as e:
-                print(f"转换失败 {filename}: {e}")
+                print(f"Conversion failed {filename}: {e}")
     
-    print(f"\n共转换 {len(converted_files)} 个文件")
+    print(f"\nTotal converted: {len(converted_files)} files")
     return converted_files
 
 
@@ -108,7 +108,7 @@ def batch_convert_acq_to_format(input_dir: str,
     output_format = output_format.lower()
     
     if output_format != "csv":
-        raise ValueError(f"不支持的输出格式: {output_format}，仅支持csv格式")
+        raise ValueError(f"Unsupported output format: {output_format}, only csv format supported")
     
     return batch_convert_acq_to_csv(
         input_dir, output_dir, sampling_rate, group_by_type

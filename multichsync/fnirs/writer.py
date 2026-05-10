@@ -114,7 +114,7 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
         include_aux_count=include_aux_count,
     )
     
-    print(f"SNIRF文件已保存: {output_path}")
+    print(f"SNIRF file saved: {output_path}")
 
 
 def _write_snirf_core(

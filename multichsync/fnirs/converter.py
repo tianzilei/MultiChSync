@@ -51,12 +51,12 @@ def convert_fnirs_to_snirf(txt_path, src_coords_csv, det_coords_csv, output_path
         **kwargs
     )
     
-    print(f"SNIRF文件已保存: {output_path}")
+    print(f"SNIRF file saved: {output_path}")
     
     # If needed, apply MNE compatibility patch
     if patch_for_mne:
         if patch_snirf_inplace is None:
-            print("警告: 无法导入MNE修复模块，跳过修复步骤")
+            print("Warning: cannot import MNE patch module, skipping patch step")
         else:
             try:
                 # In-place fix file
@@ -66,10 +66,10 @@ def convert_fnirs_to_snirf(txt_path, src_coords_csv, det_coords_csv, output_path
                     move_hbt_to_aux=True,
                     aux_name="HbT"
                 )
-                print(f"已应用MNE兼容性修复: {patched_path}")
+                print(f"MNE compatibility patch applied: {patched_path}")
             except Exception as e:
-                print(f"警告: MNE修复失败: {e}")
-                print("SNIRF文件已创建但未应用MNE修复")
+                print(f"Warning: MNE patch failed: {e}")
+                print("SNIRF file created without MNE patch")
     
     return str(output_path)
 

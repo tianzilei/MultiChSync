@@ -58,7 +58,7 @@ def extract_marker_time_only(
     df = pd.read_csv(input_csv)
 
     if df.shape[1] != 1:
-        raise ValueError("CSV必须只有1列")
+        raise ValueError("CSV must have exactly 1 column")
 
     col = df.columns[0]
     s = pd.to_numeric(df[col], errors="coerce")
@@ -96,8 +96,8 @@ def extract_marker_time_only(
         float_format="%.6f",
     )
 
-    print(f"输出文件: {output_csv}")
-    print(f"marker数量: {len(df_out)}")
+    print(f"Output file: {output_csv}")
+    print(f"Marker count: {len(df_out)}")
 
     return df_out
 
@@ -240,7 +240,7 @@ def extract_fnirs_marker(
             continue
 
     if df is None:
-        raise ValueError(f"无法读取CSV文件，尝试了编码: {encodings_to_try}")
+        raise ValueError(f"Cannot read CSV file, tried encodings: {encodings_to_try}")
 
     # Strip column name whitespace
     df.columns = [str(c).strip() for c in df.columns]
@@ -323,19 +323,19 @@ def clean_marker_csv(
     try:
         df = pd.read_csv(csv_path)
     except Exception as e:
-        print(f"[读取失败] {csv_path.name}: {e}")
+        print(f"[READ_ERROR] {csv_path.name}: {e}")
         return "read_error"
 
     # ---------- 1. Delete invalid files ----------
     # Only header / no data
     if df.empty:
-        print(f"[删除空文件] {csv_path.name}")
+        print(f"[DELETED_EMPTY] {csv_path.name}")
         csv_path.unlink(missing_ok=True)
         return "deleted_empty"
 
     # Less than min_rows rows of data
     if len(df) < min_rows:
-        print(f"[删除数据过少文件] {csv_path.name} | 行数={len(df)}")
+        print(f"[DELETED_TOO_FEW_ROWS] {csv_path.name} | rows={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_too_few_rows"
 
@@ -357,11 +357,11 @@ def clean_marker_csv(
                     break
 
         if time_col is None:
-            print(f"[缺少时间列] {csv_path.name} | 未找到时间列")
+            print(f"[MISSING_TIME_COL] {csv_path.name} | time column not found")
             return "missing_time_col"
 
     if time_col not in df.columns:
-        print(f"[缺少时间列] {csv_path.name} | 未找到列: {time_col}")
+        print(f"[MISSING_TIME_COL] {csv_path.name} | column not found: {time_col}")
         return "missing_time_col"
 
     # Convert to numeric, set NaN if conversion fails
@@ -372,7 +372,7 @@ def clean_marker_csv(
 
     # If after deletion less than min_rows, delete file
     if len(df) < min_rows:
-        print(f"[删除无效时间文件] {csv_path.name} | 有效时间行数={len(df)}")
+        print(f"[DELETED_INVALID_TIME] {csv_path.name} | valid time rows={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_invalid_time"
 
@@ -385,11 +385,11 @@ def clean_marker_csv(
         zero_count = zero_mask.sum()
         if zero_count > 0:
             df = df[~zero_mask].reset_index(drop=True)
-            print(f"[删除首点为0] {csv_path.name} | 删除{zero_count}行，时间=0")
+            print(f"[DELETED_FIRST_ZERO] {csv_path.name} | removed {zero_count} rows with time=0")
 
     # If after deletion less than min_rows, delete file
     if len(df) < min_rows:
-        print(f"[删除首点为0后] {csv_path.name} | 行数不足={len(df)}")
+        print(f"[DELETED_AFTER_ZERO_REMOVAL] {csv_path.name} | insufficient rows={len(df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_invalid_time"
 
@@ -415,7 +415,7 @@ def clean_marker_csv(
 
     # After cleaning if less than min_rows, can also delete
     if len(cleaned_df) < min_rows:
-        print(f"[清洗后删除文件] {csv_path.name} | 清洗后行数={len(cleaned_df)}")
+        print(f"[DELETED_AFTER_CLEAN] {csv_path.name} | rows after clean={len(cleaned_df)}")
         csv_path.unlink(missing_ok=True)
         return "deleted_after_clean"
 
@@ -427,7 +427,7 @@ def clean_marker_csv(
 
     cleaned_df.to_csv(out_path, index=False, encoding="utf-8-sig")
 
-    print(f"[已清洗] {csv_path.name} | 原始行数={len(df)} | 保留行数={len(cleaned_df)}")
+    print(f"[CLEANED] {csv_path.name} | original rows={len(df)} | kept rows={len(cleaned_df)}")
     return "cleaned"
 
 
@@ -471,7 +471,7 @@ def clean_marker_folder(
         if not any(part.startswith(".") or part == "__MACOSX" for part in f.parts)
     ]
     if not csv_files:
-        print("未找到 csv 文件")
+        print("No csv files found")
         return {}
 
     # Calculate relative path to preserve directory structure
@@ -511,7 +511,7 @@ def clean_marker_folder(
         if result in summary:
             summary[result] += 1
 
-    print("\n=== 清洗完成 ===")
+    print("\n=== Clean complete ===")
     for k, v in summary.items():
         if v > 0:
             print(f"{k}: {v}")

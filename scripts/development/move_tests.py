@@ -52,9 +52,9 @@ def update_imports(content: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="移动测试文件并更新导入")
-    parser.add_argument("--dry-run", action="store_true", help="只显示计划的操作")
-    parser.add_argument("--verbose", action="store_true", help="详细输出")
+    parser = argparse.ArgumentParser(description="Move test files and update imports")
+    parser.add_argument("--dry-run", action="store_true", help="Only show planned operations")
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
     source_dir = Path.cwd()
@@ -66,17 +66,17 @@ def main():
     for test_file in TEST_FILES:
         source_path = source_dir / test_file
         if not source_path.exists():
-            print(f"警告: {test_file} 不存在，跳过")
+            print(f"Warning: {test_file} does not exist, skipping")
             continue
 
         target_path = target_dir / test_file
 
         if args.dry_run:
-            print(f"[干运行] 将移动 {source_path} -> {target_path}")
+            print(f"[DRY RUN] Would move {source_path} -> {target_path}")
             continue
 
         if args.verbose:
-            print(f"移动 {source_path} -> {target_path}")
+            print(f"Moving {source_path} -> {target_path}")
 
         # 读取并更新导入
         content = source_path.read_text(encoding="utf-8")
@@ -88,7 +88,7 @@ def main():
         # 删除源文件
         source_path.unlink()
 
-        print(f"已移动并更新 {test_file}")
+        print(f"Moved and updated {test_file}")
 
 
 if __name__ == "__main__":

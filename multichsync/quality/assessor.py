@@ -1914,7 +1914,7 @@ def process_one_snirf(
 
             with h5py.File(output_snirf_file, "r+") as f:
                 if "nirs" not in f:
-                    raise RuntimeError("SNIRF 文件缺少 /nirs 组")
+                    raise RuntimeError("SNIRF file missing /nirs group")
 
                 if "metaDataTags" not in f["nirs"]:
                     # Create metaDataTags group
@@ -2207,16 +2207,16 @@ def process_one_snirf_with_metadata(
             if not output_snirf_file.exists():
                 # File does not exist, copy from original
                 shutil.copy2(snirf_path, output_snirf_file)
-                print(f"复制原始文件到: {output_snirf_file}")
+                print(f"Copying original file to: {output_snirf_file}")
             elif overwrite and output_snirf_file != snirf_path:
                 # File exists and overwrite allowed, recopy to ensure correct structure
                 shutil.copy2(snirf_path, output_snirf_file)
-                print(f"覆盖文件并复制原始结构: {output_snirf_file}")
+                print(f"Overwriting file and copying original structure: {output_snirf_file}")
             elif not overwrite and output_snirf_file != snirf_path:
                 # File exists but overwrite not allowed (this case should have been caught by previous checks)
                 # For safety, still copy here (actually won't execute)
                 shutil.copy2(snirf_path, output_snirf_file)
-                print(f"复制原始文件到现有位置: {output_snirf_file}")
+                print(f"Copying original file to existing location: {output_snirf_file}")
 
             # Use h5py to add metadata tags
             try:
@@ -2262,7 +2262,7 @@ def process_one_snirf_with_metadata(
 
                 metadata_written = True
             except Exception as e:
-                print(f"警告: 无法将元数据写入 SNIRF 文件: {e}")
+                print(f"Warning: could not write metadata to SNIRF file: {e}")
                 metadata_written = False
 
     # 5. If needed, generate single-line CSV report

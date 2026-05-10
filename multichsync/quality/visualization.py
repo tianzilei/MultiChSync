@@ -81,7 +81,7 @@ def generate_channel_quality_heatmap(
         输出文件路径，如果失败返回 None
     """
     if not MATPLOTLIB_AVAILABLE:
-        print("警告: matplotlib 不可用，跳过生成通道质量热图")
+        print("Warning: matplotlib not available, skipping channel quality heatmap")
         return None
 
     try:
@@ -94,7 +94,7 @@ def generate_channel_quality_heatmap(
         n_channels = len(channels)
 
         if n_channels == 0:
-            print("警告: 没有通道数据可绘制")
+            print("Warning: no channel data to plot")
             return None
 
         # Calculate quality score (0-1)
@@ -156,11 +156,11 @@ def generate_channel_quality_heatmap(
         plt.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close()
 
-        print(f"通道质量热图已保存: {output_path}")
+        print(f"Channel quality heatmap saved: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"生成通道质量热图失败: {e}")
+        print(f"Failed to generate channel quality heatmap: {e}")
         import traceback
 
         traceback.print_exc()
@@ -192,7 +192,7 @@ def generate_snr_distribution_histogram(
         输出文件路径，如果失败返回 None
     """
     if not MATPLOTLIB_AVAILABLE:
-        print("警告: matplotlib 不可用，跳过生成信噪比分布图")
+        print("Warning: matplotlib not available, skipping SNR distribution plot")
         return None
 
     try:
@@ -203,7 +203,7 @@ def generate_snr_distribution_histogram(
             # If no tSNR, use snr_time_db
             snr_col = "snr_time_db"
             if snr_col not in quality_df.columns:
-                print("警告: 没有找到 SNR 数据列")
+                print("Warning: no SNR data column found")
                 return None
         else:
             snr_col = "tsnr"
@@ -211,7 +211,7 @@ def generate_snr_distribution_histogram(
         snr_values = quality_df[snr_col].dropna().values
 
         if len(snr_values) == 0:
-            print("警告: 没有有效的 SNR 数据")
+            print("Warning: no valid SNR data")
             return None
 
         # Create figure
@@ -266,11 +266,11 @@ def generate_snr_distribution_histogram(
         plt.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close()
 
-        print(f"信噪比分布图已保存: {output_path}")
+        print(f"SNR distribution plot saved: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"生成信噪比分布图失败: {e}")
+        print(f"Failed to generate SNR distribution plot: {e}")
         import traceback
 
         traceback.print_exc()
@@ -300,7 +300,7 @@ def generate_hbo_hbr_correlation_plot(
         输出文件路径，如果失败返回 None
     """
     if not MATPLOTLIB_AVAILABLE:
-        print("警告: matplotlib 不可用，跳过生成HbO-HbR相关性图")
+        print("Warning: matplotlib not available, skipping HbO-HbR correlation plot")
         return None
 
     try:
@@ -322,7 +322,7 @@ def generate_hbo_hbr_correlation_plot(
         )
 
         if len(hbo_df) == 0 or len(hbr_df) == 0:
-            print("警告: 没有足够的 HbO/HbR 通道数据")
+            print("Warning: insufficient HbO/HbR channel data")
             return None
 
         # Get pair info
@@ -331,7 +331,7 @@ def generate_hbo_hbr_correlation_plot(
         elif "pair_base" in quality_df.columns:
             pair_column = "pair_base"
         else:
-            print("警告: 没有找到配对信息")
+            print("Warning: no pairing info found")
             return None
 
         # Get channel data and correlation
@@ -402,7 +402,7 @@ def generate_hbo_hbr_correlation_plot(
                     correlations.append(corr)
 
         if len(hbo_values) == 0:
-            print("警告: 没有有效的配对数据可绘制")
+            print("Warning: no valid pair data to plot")
             return None
 
         hbo_values = np.array(hbo_values)
@@ -472,11 +472,11 @@ def generate_hbo_hbr_correlation_plot(
         plt.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close()
 
-        print(f"HbO-HbR相关性图已保存: {output_path}")
+        print(f"HbO-HbR correlation plot saved: {output_path}")
         return output_path
 
     except Exception as e:
-        print(f"生成HbO-HbR相关性图失败: {e}")
+        print(f"Failed to generate HbO-HbR correlation plot: {e}")
         import traceback
 
         traceback.print_exc()
@@ -524,7 +524,7 @@ def generate_all_visualizations(
     results = {}
 
     if not postfilter_detail.exists():
-        print(f"警告: 详细数据文件不存在: {postfilter_detail}")
+        print(f"Warning: detail data file not found: {postfilter_detail}")
         return results
 
     # 1. Channel quality heatmap

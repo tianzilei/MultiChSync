@@ -50,7 +50,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
     """
     input_dir = Path(input_dir)
     if not input_dir.exists():
-        raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+        raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
     
     # Determine output directory
     if output_dir is None:
@@ -104,12 +104,12 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
     
     total_files = len(eeg_files)
     if total_files == 0:
-        print(f"在 {input_dir} 中没有找到支持的EEG文件")
+        print(f"No supported EEG files found in {input_dir}")
         return []
     
-    print(f"找到 {total_files} 个EEG文件")
-    print(f"输出格式: {export_format}")
-    print(f"输出目录: {output_dir}")
+    print(f"Found {total_files} EEG files")
+    print(f"Output format: {export_format}")
+    print(f"Output directory: {output_dir}")
     
     converted_files = []
     
@@ -138,12 +138,12 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
             )
             
             converted_files.append((str(input_file), output_path))
-            print(f"[{i}/{total_files}] 转换成功: {input_file.name} -> {os.path.relpath(output_path, output_dir)}")
+            print(f"[{i}/{total_files}] Conversion successful: {input_file.name} -> {os.path.relpath(output_path, output_dir)}")
             
         except Exception as e:
-            print(f"[{i}/{total_files}] 转换失败 {input_file.name}: {e}")
+            print(f"[{i}/{total_files}] Conversion failed {input_file.name}: {e}")
     
-    print(f"\n共转换 {len(converted_files)}/{total_files} 个文件")
+    print(f"\nTotal converted: {len(converted_files)}/{total_files} files")
     return converted_files
 
 

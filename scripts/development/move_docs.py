@@ -16,9 +16,9 @@ DOC_FILES = [
 ]
 
 def main():
-    parser = argparse.ArgumentParser(description="移动文档文件")
-    parser.add_argument("--dry-run", action="store_true", help="只显示计划的操作")
-    parser.add_argument("--verbose", action="store_true", help="详细输出")
+    parser = argparse.ArgumentParser(description="Move documentation files")
+    parser.add_argument("--dry-run", action="store_true", help="Only show planned operations")
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
     
     source_dir = Path.cwd()
@@ -30,20 +30,20 @@ def main():
     for doc_file in DOC_FILES:
         source_path = source_dir / doc_file
         if not source_path.exists():
-            print(f"警告: {doc_file} 不存在，跳过")
+            print(f"Warning: {doc_file} does not exist, skipping")
             continue
         
         target_path = target_dir / doc_file
         
         if args.dry_run:
-            print(f"[干运行] 将移动 {source_path} -> {target_path}")
+            print(f"[DRY RUN] Would move {source_path} -> {target_path}")
             continue
         
         if args.verbose:
-            print(f"移动 {source_path} -> {target_path}")
+            print(f"Moving {source_path} -> {target_path}")
         
         shutil.move(str(source_path), str(target_path))
-        print(f"已移动 {doc_file}")
+        print(f"Moved {doc_file}")
 
 if __name__ == "__main__":
     main()

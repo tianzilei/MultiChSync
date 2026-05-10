@@ -41,7 +41,7 @@ def detect_device_type(device_name: str) -> str:
         return "ecg"
     elif device_name_lower == "eeg":
         return "eeg"
-    raise ValueError(f"无法识别设备类型: {device_name}")
+    raise ValueError(f"Unable to identify device type: {device_name}")
 
 
 def find_raw_data_file(device_name: str, device_type: str) -> Optional[Path]:
@@ -150,7 +150,7 @@ def crop_ecg_data(
                     break
 
     if time_col is None:
-        raise ValueError(f"无法找到时间列: {df.columns.tolist()}")
+        raise ValueError(f"Cannot find time column: {df.columns.tolist()}")
 
     # Convert time column to numeric (in case it was read as string)
     df[time_col] = pd.to_numeric(df[time_col], errors="coerce")
@@ -203,7 +203,7 @@ def crop_eeg_data(
 
     # Ensure valid range
     if start_sample >= end_sample:
-        raise ValueError(f"无效的裁剪范围: start={start_sample}, end={end_sample}")
+        raise ValueError(f"Invalid crop range: start={start_sample}, end={end_sample}")
 
     # Crop data
     cropped_data = raw.get_data()[:, start_sample:end_sample]
@@ -274,7 +274,7 @@ def crop_fnirs_data(
                         times = times.flatten()
                     break
             else:
-                raise ValueError("无法在SNIRF文件中找到时间数据")
+                raise ValueError("Cannot find time data in SNIRF file")
 
         # Find indices to keep
         start_idx = max(0, np.searchsorted(times, actual_start))
@@ -285,7 +285,7 @@ def crop_fnirs_data(
             # If requested time range exceeds data range, use entire dataset
             start_idx = 0
             end_idx = len(times)
-            print(f"    警告: 请求的时间范围超出数据范围，使用整个数据集")
+            print(f"    Warning: requested time range exceeds data range, using entire dataset")
 
         # Read data
         data_key = "nirs/data1/dataTimeSeries"
@@ -303,7 +303,7 @@ def crop_fnirs_data(
                         data = data.reshape(-1, 1)
                     break
             else:
-                raise ValueError("无法在SNIRF文件中找到数据")
+                raise ValueError("Cannot find data in SNIRF file")
 
         # Crop data - ensure indices valid
         if start_idx < len(times) and end_idx <= data.shape[0]:
@@ -359,7 +359,7 @@ def copy_reference_data(
     input_file = find_raw_data_file(device_name, device_type)
 
     if input_file is None:
-        raise FileNotFoundError(f"找不到设备数据文件: {device_name}")
+        raise FileNotFoundError(f"Device data file not found: {device_name}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -430,14 +430,14 @@ def matchcrop(
             break
 
     if reference_info is None:
-        raise ValueError(f"未找到参考设备: {reference_device}")
+        raise ValueError(f"Reference device not found: {reference_device}")
 
     reference_time_range = reference_info["time_range"]
     reference_start = reference_time_range[0]
     reference_end = reference_time_range[1]
 
-    print(f"参考设备: {reference_device}")
-    print(f"时间范围: {reference_start:.3f}s - {reference_end:.3f}s")
+    print(f"Reference device: {reference_device}")
+    print(f"Time range: {reference_start:.3f}s - {reference_end:.3f}s")
 
     # Process result
     results = {
@@ -454,17 +454,17 @@ def matchcrop(
 
         if device_name == reference_device:
             # Copy reference device data
-            print(f"  复制参考设备: {device_name} ({device_type})")
+            print(f"  Copying reference device: {device_name} ({device_type})")
             try:
                 copy_result = copy_reference_data(device_name, device_type, output_dir)
                 results["output_files"][device_name] = copy_result
-                print(f"    -> 已复制到 {output_dir}")
+                print(f"    -> Copied to {output_dir}")
             except Exception as e:
-                print(f"    -> 复制失败: {e}")
+                print(f"    -> Copy failed: {e}")
             continue
 
         # Crop other device data
-        print(f"  裁剪设备: {device_name} ({device_type})")
+        print(f"  Cropping device: {device_name} ({device_type})")
 
         # Get device time offset (if drift correction exists)
         drift = (
@@ -478,10 +478,10 @@ def matchcrop(
         input_file = find_raw_data_file(device_name, device_type)
 
         if input_file is None:
-            print(f"    -> 警告: 找不到数据文件，跳过")
+            print(f"    -> Warning: data file not found, skipping")
             continue
 
-        print(f"    输入文件: {input_file}")
+        print(f"    Input file: {input_file}")
 
         try:
             if device_type == "ecg":
@@ -518,10 +518,10 @@ def matchcrop(
                 results["output_files"][device_name] = crop_result
 
             results["cropped_devices"].append(device_name)
-            print(f"    -> 裁剪完成")
+            print(f"    -> Crop complete")
 
         except Exception as e:
-            print(f"    -> 裁剪失败: {e}")
+            print(f"    -> Crop failed: {e}")
 
     # Save metadata
     output_metadata = output_dir / f"{output_prefix}_metadata.json"
@@ -547,20 +547,20 @@ def main():
     """命令行入口"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="MatchCrop: 匹配后裁剪多设备原始数据")
+    parser = argparse.ArgumentParser(description="MatchCrop: crop multi-device raw data after matching")
     parser.add_argument(
-        "--timeline-csv", "-t", required=True, help="匹配后的timeline CSV文件路径"
+        "--timeline-csv", "-t", required=True, help="Path to matched timeline CSV file"
     )
     parser.add_argument(
-        "--metadata-json", "-m", required=True, help="匹配后的metadata JSON文件路径"
+        "--metadata-json", "-m", required=True, help="Path to matched metadata JSON file"
     )
-    parser.add_argument("--reference", "-r", required=True, help="参考设备名称")
-    parser.add_argument("--output-dir", "-o", required=True, help="输出目录路径")
+    parser.add_argument("--reference", "-r", required=True, help="Reference device name")
+    parser.add_argument("--output-dir", "-o", required=True, help="Output directory path")
     parser.add_argument(
         "--output-prefix",
         "-p",
         default="matchcrop",
-        help="输出文件前缀（默认：matchcrop）",
+        help="Output file prefix (default: matchcrop)",
     )
 
     args = parser.parse_args()
@@ -573,10 +573,10 @@ def main():
         output_prefix=args.output_prefix,
     )
 
-    print(f"\n处理完成!")
-    print(f"  参考设备: {result['reference_device']}")
-    print(f"  裁剪设备数: {len(result['cropped_devices'])}")
-    print(f"  输出目录: {args.output_dir}")
+    print(f"\nProcessing complete!")
+    print(f"  Reference device: {result['reference_device']}")
+    print(f"  Devices cropped: {len(result['cropped_devices'])}")
+    print(f"  Output directory: {args.output_dir}")
 
 
 if __name__ == "__main__":

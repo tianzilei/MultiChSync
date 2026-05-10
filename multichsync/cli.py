@@ -50,9 +50,9 @@ def fnirs_convert(args):
             output_path=args.output,
             patch_for_mne=not args.no_mne_patch,
         )
-        print(f"转换成功: {output_path}")
+        print(f"Conversion successful: {output_path}")
     except Exception as e:
-        print(f"转换失败: {e}")
+        print(f"Conversion failed: {e}")
         sys.exit(1)
 
 
@@ -66,9 +66,9 @@ def fnirs_batch(args):
             output_dir=args.output_dir,
             patch_for_mne=not args.no_mne_patch,
         )
-        print(f"批量转换完成，共 {len(converted_files)} 个文件")
+        print(f"Batch conversion complete, {len(converted_files)} files total")
     except Exception as e:
-        print(f"批量转换失败: {e}")
+        print(f"Batch conversion failed: {e}")
         sys.exit(1)
 
 
@@ -78,13 +78,13 @@ def fnirs_patch(args):
         from multichsync.fnirs import patch_snirf_for_mne, patch_snirf_inplace
 
         if patch_snirf_for_mne is None:
-            print("错误: MNE修复模块不可用，请确保h5py已安装")
+            print("Error: MNE patch module unavailable, ensure h5py is installed")
             sys.exit(1)
 
         if args.inplace:
             # In-place patch
             if args.output:
-                print("警告: --inplace参数已指定，--output参数将被忽略")
+                print("Warning: --inplace specified, --output will be ignored")
 
             patched_path = patch_snirf_inplace(
                 snirf_path=args.input,
@@ -92,7 +92,7 @@ def fnirs_patch(args):
                 move_hbt_to_aux=not args.no_move_hbt,
                 aux_name="HbT",
             )
-            print(f"原地修复完成: {patched_path}")
+            print(f"In-place patch complete: {patched_path}")
         else:
             # Create new file
             patched_path = patch_snirf_for_mne(
@@ -102,10 +102,10 @@ def fnirs_patch(args):
                 move_hbt_to_aux=not args.no_move_hbt,
                 aux_name="HbT",
             )
-            print(f"修复完成，输出文件: {patched_path}")
+            print(f"Patch complete, output file: {patched_path}")
 
     except Exception as e:
-        print(f"修复失败: {e}")
+        print(f"Patch failed: {e}")
         sys.exit(1)
 
 
@@ -113,7 +113,7 @@ def ecg_convert(args):
     """处理ECG转换命令"""
     try:
         if args.format != "csv":
-            print(f"不支持的格式: {args.format}，仅支持csv格式")
+            print(f"Unsupported format: {args.format}, only csv format supported")
             sys.exit(1)
 
         result = convert_acq_to_csv(
@@ -125,14 +125,14 @@ def ecg_convert(args):
         )
 
         if isinstance(result, dict):
-            print("转换成功，输出文件:")
+            print("Conversion successful, output files:")
             for group, path in result.items():
                 print(f"  {group}: {path}")
         else:
-            print(f"转换成功: {result}")
+            print(f"Conversion successful: {result}")
 
     except Exception as e:
-        print(f"转换失败: {e}")
+        print(f"Conversion failed: {e}")
         sys.exit(1)
 
 
@@ -140,7 +140,7 @@ def ecg_batch(args):
     """处理ECG批量转换命令"""
     try:
         if args.format != "csv":
-            print(f"不支持的格式: {args.format}，仅支持csv格式")
+            print(f"Unsupported format: {args.format}, only csv format supported")
             sys.exit(1)
 
         results = batch_convert_acq_to_csv(
@@ -151,10 +151,10 @@ def ecg_batch(args):
             float_format=args.float_format,
         )
 
-        print(f"批量转换完成，共 {len(results)} 个文件")
+        print(f"Batch conversion complete, {len(results)} files total")
 
     except Exception as e:
-        print(f"批量转换失败: {e}")
+        print(f"Batch conversion failed: {e}")
         sys.exit(1)
 
 
@@ -170,11 +170,11 @@ def eeg_convert(args):
             verbose=args.verbose,
             sampling_rate=args.sampling_rate,
         )
-        print(f"转换成功: {output_path}")
-        print(f"通道数: {len(raw.ch_names)}, 采样率: {raw.info['sfreq']} Hz")
+        print(f"Conversion successful: {output_path}")
+        print(f"Channels: {len(raw.ch_names)}, Sampling rate: {raw.info['sfreq']} Hz")
 
     except Exception as e:
-        print(f"转换失败: {e}")
+        print(f"Conversion failed: {e}")
         sys.exit(1)
 
 
@@ -192,10 +192,10 @@ def eeg_batch(args):
             sampling_rate=args.sampling_rate,
         )
 
-        print(f"批量转换完成，共 {len(results)} 个文件")
+        print(f"Batch conversion complete, {len(results)} files total")
 
     except Exception as e:
-        print(f"批量转换失败: {e}")
+        print(f"Batch conversion failed: {e}")
         sys.exit(1)
 
 
@@ -220,7 +220,7 @@ def marker_extract(args):
                 # fNIRS files can be .txt or .csv
                 extract_type = "fnirs"
             else:
-                raise ValueError("无法自动检测文件类型，请使用--type参数指定")
+                raise ValueError("Cannot auto-detect file type, use the --type parameter")
 
         # Call corresponding extraction function
         if extract_type == "biopac":
@@ -237,13 +237,13 @@ def marker_extract(args):
         elif extract_type == "fnirs":
             df = extract_fnirs_marker(input_csv=input_path, output_csv=output_path)
         else:
-            raise ValueError(f"不支持的提取类型: {extract_type}")
+                raise ValueError(f"Unsupported extraction type: {extract_type}")
 
-        print(f"Marker提取成功: {output_path}")
-        print(f"提取数量: {len(df)}")
+        print(f"Marker extraction successful: {output_path}")
+        print(f"Extracted count: {len(df)}")
 
     except Exception as e:
-        print(f"Marker提取失败: {e}")
+        print(f"Marker extraction failed: {e}")
         sys.exit(1)
 
 
@@ -285,7 +285,7 @@ def marker_batch(args):
                     stats["fnirs"] += 1
                 except Exception as e:
                     stats["failed"] += 1
-                    print(f"  [失败] {csv_file.name}: {e}")
+                    print(f"  [FAILED] {csv_file.name}: {e}")
 
         # ECG: Data/convert/ecg/*_input.csv -> Data/marker/ecg/*.csv
         if "ecg" in types:
@@ -316,10 +316,10 @@ def marker_batch(args):
                     stats["ecg"] += 1
                     # Delete successfully extracted input files (no longer needed after marker extraction)
                     csv_file.unlink(missing_ok=True)
-                    print(f"  [已删除] {csv_file.name}")
+                    print(f"  [DELETED] {csv_file.name}")
                 except Exception as e:
                     stats["failed"] += 1
-                    print(f"  [失败] {csv_file.name}: {e}")
+                    print(f"  [FAILED] {csv_file.name}: {e}")
 
         # EEG: Data/convert/eeg/**/*.vmrk -> Data/marker/eeg/**/*_marker.csv
         if "eeg" in types:
@@ -346,17 +346,17 @@ def marker_batch(args):
                     stats["eeg"] += 1
                 except Exception as e:
                     stats["failed"] += 1
-                    print(f"  [失败] {vmrk_file.name}: {e}")
+                    print(f"  [FAILED] {vmrk_file.name}: {e}")
 
-        print(f"\n批量Marker提取完成:")
-        print(f"  fNIRS: {stats['fnirs']} 文件")
-        print(f"  ECG:   {stats['ecg']} 文件")
-        print(f"  EEG:   {stats['eeg']} 文件")
-        print(f"  失败:  {stats['failed']} 文件")
-        print(f"  跳过:  {stats['skipped']} 文件 (已存在)")
+        print(f"\nBatch marker extraction complete:")
+        print(f"  fNIRS: {stats['fnirs']} files")
+        print(f"  ECG:   {stats['ecg']} files")
+        print(f"  EEG:   {stats['eeg']} files")
+        print(f"  Failed:  {stats['failed']} files")
+        print(f"  Skipped:  {stats['skipped']} files (already exist)")
 
     except Exception as e:
-        print(f"批量Marker提取失败: {e}")
+        print(f"Batch marker extraction failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -369,12 +369,12 @@ def marker_clean(args):
         input_path = Path(args.input)
 
         if not input_path.exists():
-            raise FileNotFoundError(f"输入路径不存在: {input_path}")
+            raise FileNotFoundError(f"Input path does not exist: {input_path}")
 
         # Determine cleaning mode
         if input_path.is_file():
             # Single file cleaning
-            print(f"清洗单个文件: {input_path}")
+            print(f"Cleaning single file: {input_path}")
             result = clean_marker_csv(
                 csv_path=input_path,
                 out_path=None
@@ -385,11 +385,11 @@ def marker_clean(args):
                 min_interval=args.min_interval,
                 remove_start=args.remove_start,
             )
-            print(f"清洗结果: {result}")
+            print(f"Cleaning result: {result}")
 
         elif input_path.is_dir():
             # Batch directory cleaning
-            print(f"批量清洗目录: {input_path}")
+            print(f"Batch cleaning directory: {input_path}")
             output_dir = (
                 None
                 if args.inplace
@@ -407,15 +407,15 @@ def marker_clean(args):
                 remove_start=args.remove_start,
             )
 
-            print(f"清洗完成，处理文件统计:")
+            print(f"Cleaning complete, file statistics:")
             for status, count in summary.items():
                 if count > 0:
                     print(f"  {status}: {count}")
         else:
-            raise ValueError(f"输入路径既不是文件也不是目录: {input_path}")
+            raise ValueError(f"Input path is neither a file nor a directory: {input_path}")
 
     except Exception as e:
-        print(f"Marker清洗失败: {e}")
+        print(f"Marker cleaning failed: {e}")
         sys.exit(1)
 
 
@@ -433,18 +433,18 @@ def marker_info(args):
             input_dir=input_dir, output_dir=output_dir, recursive=recursive
         )
 
-        print(f"Marker信息提取完成:")
-        print(f"  输入目录: {input_dir}")
-        print(f"  输出目录: {output_dir}")
-        print(f"  递归搜索: {recursive}")
-        print(f"  生成报告:")
-        print(f"    错误报告: {reports['error_report']}")
-        print(f"    受试者报告:")
+        print(f"Marker info extraction complete:")
+        print(f"  Input directory: {input_dir}")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Recursive: {recursive}")
+        print(f"  Reports generated:")
+        print(f"    Error report: {reports['error_report']}")
+        print(f"    Subject reports:")
         for subj_name, report_path in reports["subject_reports"].items():
-            print(f"      受试者 {subj_name}: {report_path}")
+            print(f"      Subject {subj_name}: {report_path}")
 
     except Exception as e:
-        print(f"Marker信息提取失败: {e}")
+        print(f"Marker info extraction failed: {e}")
         sys.exit(1)
 
 
@@ -463,16 +463,16 @@ def marker_timeline(args):
             stack=args.stack,
         )
 
-        print(f"Timeline可视化生成完成:")
-        print(f"  输入目录: {input_dir}")
-        print(f"  输出目录: {output_dir}")
-        print(f"  生成文件数: {len(saved)}")
-        print(f"  模式: {'stack (per-device)' if args.stack else 'combined'}")
+        print(f"Timeline visualization generation complete:")
+        print(f"  Input directory: {input_dir}")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Files generated: {len(saved)}")
+        print(f"  Mode: {'stack (per-device)' if args.stack else 'combined'}")
         for subj, path in sorted(saved.items()):
             print(f"    {subj}: {path.name}")
 
     except Exception as e:
-        print(f"Timeline可视化生成失败: {e}")
+        print(f"Timeline visualization generation failed: {e}")
         sys.exit(1)
 
 
@@ -487,19 +487,19 @@ def marker_match(args):
             # Read files from directory
             input_dir = Path(args.input_dir)
             if not input_dir.exists():
-                raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+                raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
 
             # Find CSV files
             csv_files = list(input_dir.glob("*.csv"))
             if len(csv_files) < 2:
                 raise ValueError(
-                    f"需要至少2个CSV文件进行匹配，但只找到 {len(csv_files)} 个"
+                    f"At least 2 CSV files required for matching, but only {len(csv_files)} found"
                 )
 
             # Sort for consistency
             csv_files.sort()
             file_paths = [str(f) for f in csv_files]
-            print(f"从目录加载 {len(file_paths)} 个文件: {input_dir}")
+            print(f"Loading {len(file_paths)} files from directory: {input_dir}")
         elif args.input_files:
             # Directly specify file list
             file_paths = []
@@ -508,11 +508,11 @@ def marker_match(args):
                 if p.exists():
                     file_paths.append(str(p))
                 else:
-                    raise FileNotFoundError(f"找不到文件: {f}")
+                    raise FileNotFoundError(f"File not found: {f}")
 
-            print(f"加载 {len(file_paths)} 个指定文件")
+            print(f"Loading {len(file_paths)} specified files")
         else:
-            raise ValueError("必须提供 --input-dir 或 --input-files")
+            raise ValueError("Must provide --input-dir or --input-files")
 
         # Device name (optional)
         device_names = args.device_names if args.device_names else None
@@ -539,37 +539,37 @@ def marker_match(args):
         )
 
         # Print result summary
-        print(f"匹配完成!")
-        print(f"  输出目录: {output_dir}")
-        print(f"  时间线CSV: {output_dir}/{args.output_prefix}_timeline.csv")
-        print(f"  元数据JSON: {output_dir}/{args.output_prefix}_metadata.json")
-        print(f"  共识事件数: {results.get('n_consensus_events', 'N/A')}")
-        print(f"  总匹配数: {results.get('total_matches', 'N/A')}")
+        print(f"Matching complete!")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Timeline CSV: {output_dir}/{args.output_prefix}_timeline.csv")
+        print(f"  Metadata JSON: {output_dir}/{args.output_prefix}_metadata.json")
+        print(f"  Consensus events: {results.get('n_consensus_events', 'N/A')}")
+        print(f"  Total matches: {results.get('total_matches', 'N/A')}")
         mean_conf = results.get("mean_confidence", "N/A")
         print(
-            f"  平均置信度: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
+            f"  Mean confidence: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
         )
 
         # Print device statistics
         if "device_stats" in results:
-            print(f"  设备统计:")
+            print(f"  Device statistics:")
             for stat in results["device_stats"]:
                 dev_conf = stat.get("mean_confidence", "N/A")
                 print(
-                    f"    {stat['device']}: {stat['n_matches']} 个匹配，置信度 {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
+                    f"    {stat['device']}: {stat['n_matches']} matches, confidence {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
                 )
 
         # Print drift correction
         if "drift_corrections" in results:
-            print(f"  漂移校正:")
+            print(f"  Drift correction:")
             for i, drift in enumerate(results["drift_corrections"]):
                 if drift:
                     print(
-                        f"    设备{i + 1}: 偏移 {drift.get('offset', 0):.3f}s, 缩放 {drift.get('scale', 1):.5f}, R²={drift.get('r_squared', 0):.3f}"
+                        f"    Device {i + 1}: offset {drift.get('offset', 0):.3f}s, scale {drift.get('scale', 1):.5f}, R^2={drift.get('r_squared', 0):.3f}"
                     )
 
     except Exception as e:
-        print(f"Marker匹配失败: {e}")
+        print(f"Marker matching failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -583,9 +583,9 @@ def marker_crop(args):
         metadata_json = Path(args.metadata_json)
 
         if not timeline_csv.exists():
-            raise FileNotFoundError(f"Timeline CSV文件不存在: {timeline_csv}")
+            raise FileNotFoundError(f"Timeline CSV file not found: {timeline_csv}")
         if not metadata_json.exists():
-            raise FileNotFoundError(f"Metadata JSON文件不存在: {metadata_json}")
+            raise FileNotFoundError(f"Metadata JSON file not found: {metadata_json}")
 
         output_dir = Path(args.output_dir) if args.output_dir else timeline_csv.parent
 
@@ -597,19 +597,19 @@ def marker_crop(args):
             include_metadata=not args.no_metadata,
         )
 
-        print(f"Timeline裁剪完成!")
-        print(f"  参照设备: {result['crop_info']['reference_device']}")
+        print(f"Timeline crop complete!")
+        print(f"  Reference device: {result['crop_info']['reference_device']}")
         print(
-            f"  时间范围: {result['crop_info']['reference_start']:.3f}s - {result['crop_info']['reference_end']:.3f}s"
+            f"  Time range: {result['crop_info']['reference_start']:.3f}s - {result['crop_info']['reference_end']:.3f}s"
         )
-        print(f"  裁剪设备数: {len(result['crop_info']['cropped_devices'])}")
-        print(f"  输出目录: {output_dir}")
-        print(f"  输出文件:")
+        print(f"  Cropped devices: {len(result['crop_info']['cropped_devices'])}")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Output files:")
         for name, path in result["output_files"].items():
             print(f"    {name}: {path}")
 
     except Exception as e:
-        print(f"Timeline裁剪失败: {e}")
+        print(f"Timeline crop failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -646,7 +646,7 @@ def marker_matchcrop(args):
         # ── Single JSON path modes ────────────────────────────────────
         json_path = Path(args.json_path)
         if not json_path.exists():
-            raise FileNotFoundError(f"Metadata JSON文件不存在: {json_path}")
+            raise FileNotFoundError(f"Metadata JSON file not found: {json_path}")
 
         # ── Mode 2: Session-based (no start/end provided) ─────────────
         if args.start_time is None and args.end_time is None:
@@ -659,9 +659,9 @@ def marker_matchcrop(args):
                 output_dir=output_dir,
                 convert_base_dir="Data/convert",
             )
-            print(f"\nMatchCrop完成!")
+            print(f"\nMatchCrop complete!")
             print(f"  Subject: {result.get('subject_id', '?')}")
-            print(f"  参考设备: {result.get('reference_device', '?')}")
+            print(f"  Reference device: {result.get('reference_device', '?')}")
             print(f"  Task: {result.get('taskname', '?')}")
             n_ok = sum(
                 1 for s in result.get("sessions", {}).values()
@@ -669,9 +669,9 @@ def marker_matchcrop(args):
                 if d.get("status") == "ok"
             )
             n_err = len(result.get("errors", []))
-            print(f"  成功裁剪: {n_ok} 个文件")
+            print(f"  Successfully cropped: {n_ok} files")
             if n_err:
-                print(f"  错误: {n_err}")
+                print(f"  Errors: {n_err}")
             return
 
         # ── Mode 3: Legacy continuous crop (start/end required) ───────
@@ -685,21 +685,21 @@ def marker_matchcrop(args):
             taskname=None,
         )
 
-        print(f"MatchCrop完成!")
+        print(f"MatchCrop complete!")
         print(
-            f"  裁剪时间范围: {result['crop_time_range'][0]:.3f}s - {result['crop_time_range'][1]:.3f}s"
+            f"  Crop time range: {result['crop_time_range'][0]:.3f}s - {result['crop_time_range'][1]:.3f}s"
         )
-        print(f"  Task名称: {result['old_taskname']} -> {result['new_taskname']}")
-        print(f"  输出目录: {result['output_dir']}")
-        print(f"  成功处理设备: {len(result['cropped_devices'])}")
+        print(f"  Task name: {result['old_taskname']} -> {result['new_taskname']}")
+        print(f"  Output directory: {result['output_dir']}")
+        print(f"  Devices processed: {len(result['cropped_devices'])}")
 
         if result["errors"]:
-            print(f"  错误数: {len(result['errors'])}")
+            print(f"  Errors: {len(result['errors'])}")
             for err in result["errors"]:
                 print(f"    - {err}")
 
     except Exception as e:
-        print(f"MatchCrop失败: {e}")
+        print(f"MatchCrop failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -725,7 +725,7 @@ def marker_manual_match(args):
             if p.exists():
                 file_paths.append(str(p))
             else:
-                raise FileNotFoundError(f"找不到文件: {f}")
+                raise FileNotFoundError(f"File not found: {f}")
         
         device_names_specified = args.device_names if args.device_names else None
         internal_method = METHOD_NAME_MAPPING.get(args.method, "hungarian")
@@ -760,10 +760,10 @@ def marker_manual_match(args):
             dev.drift_result = manual_drift
             dev.timestamps_corrected = apply_drift_correction(dev.timestamps_raw, manual_drift)
             adjusted_devices.append(dev)
-            print(f"  设备 {dev.name}: 偏移 {offset:+.3f}s ({len(dev.timestamps_raw)} 个marker)")
+            print(f"  Device {dev.name}: offset {offset:+.3f}s ({len(dev.timestamps_raw)} markers)")
         
         # Rebuild consensus timeline with applied offsets
-        print("正在重建共识时间线...")
+        print("Rebuilding consensus timeline...")
         timeline = rebuild_timeline(
             adjusted_devices,
             method=internal_method,
@@ -775,7 +775,7 @@ def marker_manual_match(args):
         merged_df = timeline.get_merged_dataframe()
         csv_path = output_dir / f"{args.prefix}_timeline.csv"
         merged_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-        print(f"时间线已保存: {csv_path}")
+        print(f"Timeline saved: {csv_path}")
         
         # Build and save metadata JSON
         timeline_meta = timeline.get_metadata()
@@ -808,20 +808,20 @@ def marker_manual_match(args):
         json_path_out = output_dir / f"{args.prefix}_metadata.json"
         with open(json_path_out, 'w', encoding='utf-8') as f:
             json_mod.dump(metadata, f, indent=2, default=str)
-        print(f"元数据已保存: {json_path_out}")
+        print(f"Metadata saved: {json_path_out}")
         
         # Print summary
-        print(f"\n手动匹配完成!")
-        print(f"  输出目录: {output_dir}")
-        print(f"  时间线文件: {csv_path}")
-        print(f"  元数据文件: {json_path_out}")
-        print(f"  共识事件数: {timeline_meta.get('n_matched_groups', 'N/A')}")
-        print(f"  调整的设备数: {len(adjusted_devices)}")
+        print(f"\nManual matching complete!")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Timeline file: {csv_path}")
+        print(f"  Metadata file: {json_path_out}")
+        print(f"  Consensus events: {timeline_meta.get('n_matched_groups', 'N/A')}")
+        print(f"  Adjusted devices: {len(adjusted_devices)}")
         for dev in adjusted_devices:
-            print(f"    {dev.name}: 偏移 {dev.drift_result.offset:+.3f}s")
+            print(f"    {dev.name}: offset {dev.drift_result.offset:+.3f}s")
         
     except Exception as e:
-        print(f"手动匹配失败: {e}")
+        print(f"Manual matching failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -880,19 +880,19 @@ def quality_assess(args):
             events=None,
         )
 
-        print(f"质量评估完成:")
-        print(f"  输出目录: {output_dir}")
-        print(f"  HbO通道数: {summary['n_hbo_channels']}")
-        print(f"  HbR通道数: {summary['n_hbr_channels']}")
-        print(f"  滤波前坏通道数: {summary['n_bad_prefilter']}")
-        print(f"  滤波后坏通道数: {summary['n_bad_postfilter']}")
-        print(f"  滤波前平均时域SNR: {summary['Pre-filter mean time SNR (dB)']:.2f} dB")
+        print(f"Quality assessment complete:")
+        print(f"  Output directory: {output_dir}")
+        print(f"  HbO channels: {summary['n_hbo_channels']}")
+        print(f"  HbR channels: {summary['n_hbr_channels']}")
+        print(f"  Bad channels (pre-filter): {summary['n_bad_prefilter']}")
+        print(f"  Bad channels (post-filter): {summary['n_bad_postfilter']}")
+        print(f"  Pre-filter mean time SNR: {summary['Pre-filter mean time SNR (dB)']:.2f} dB")
         print(
-            f"  滤波后平均时域SNR: {summary['Post-filter mean time SNR (dB)']:.2f} dB"
+            f"  Post-filter mean time SNR: {summary['Post-filter mean time SNR (dB)']:.2f} dB"
         )
 
     except Exception as e:
-        print(f"质量评估失败: {e}")
+        print(f"Quality assessment failed: {e}")
         sys.exit(1)
 
 
@@ -923,18 +923,18 @@ def quality_batch(args):
             events=None,
         )
 
-        print(f"批量质量评估完成:")
-        print(f"  输出目录: {output_dir}")
-        print(f"  处理文件数: {len(summary_df)}")
-        print(f"  失败文件数: {len(failed)}")
+        print(f"Batch quality assessment complete:")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Files processed: {len(summary_df)}")
+        print(f"  Failed files: {len(failed)}")
 
         if len(failed) > 0:
-            print(f"  失败文件详情: {output_dir / 'snirf_batch_failed.csv'}")
+            print(f"  Failed file details: {output_dir / 'snirf_batch_failed.csv'}")
 
-        print(f"  汇总文件: {output_dir / 'snirf_batch_summary.csv'}")
+        print(f"  Summary file: {output_dir / 'snirf_batch_summary.csv'}")
 
     except Exception as e:
-        print(f"批量质量评估失败: {e}")
+        print(f"Batch quality assessment failed: {e}")
         sys.exit(1)
 
 
@@ -970,23 +970,23 @@ def quality_assess_with_metadata(args):
             overwrite=args.overwrite,
         )
 
-        print(f"质量评估完成（带元数据写入）:")
-        print(f"  输出目录: {output_dir}")
-        print(f"  HbO通道数: {summary['n_hbo_channels']}")
-        print(f"  HbR通道数: {summary['n_hbr_channels']}")
-        print(f"  坏通道数: {summary['n_bad_channels']}")
-        print(f"  整体质量分数: {summary['overall_score']:.3f}")
+        print(f"Quality assessment complete (with metadata write):")
+        print(f"  Output directory: {output_dir}")
+        print(f"  HbO channels: {summary['n_hbo_channels']}")
+        print(f"  HbR channels: {summary['n_hbr_channels']}")
+        print(f"  Bad channels: {summary['n_bad_channels']}")
+        print(f"  Overall quality score: {summary['overall_score']:.3f}")
 
         if summary["metadata_written"]:
-            print(f"  元数据已写入: {summary['output_snirf_file']}")
+            print(f"  Metadata written to: {summary['output_snirf_file']}")
         else:
-            print(f"  警告: 元数据未写入")
+            print(f"  Warning: metadata not written")
 
         if summary["report_csv_file"]:
-            print(f"  单行报告CSV: {summary['report_csv_file']}")
+            print(f"  Single-row report CSV: {summary['report_csv_file']}")
 
     except Exception as e:
-        print(f"质量评估失败: {e}")
+        print(f"Quality assessment failed: {e}")
         sys.exit(1)
 
 
@@ -1021,15 +1021,15 @@ def quality_batch_with_metadata(args):
             overwrite=args.overwrite,
         )
 
-        print(f"批量质量评估完成（带元数据写入）:")
-        print(f"  输出目录: {output_dir}")
-        print(f"  处理文件数: {len(summary_df)}")
-        print(f"  失败文件数: {len(failed)}")
+        print(f"Batch quality assessment complete (with metadata write):")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Files processed: {len(summary_df)}")
+        print(f"  Failed files: {len(failed)}")
 
         if len(failed) > 0:
-            print(f"  失败文件详情: {output_dir / 'snirf_batch_failed.csv'}")
+            print(f"  Failed file details: {output_dir / 'snirf_batch_failed.csv'}")
 
-        print(f"  汇总文件: {output_dir / 'snirf_batch_summary_with_metadata.csv'}")
+        print(f"  Summary file: {output_dir / 'snirf_batch_summary_with_metadata.csv'}")
 
         # Count metadata write status
         n_with_metadata = (
@@ -1037,10 +1037,10 @@ def quality_batch_with_metadata(args):
             if "metadata_written" in summary_df.columns
             else 0
         )
-        print(f"  成功写入元数据的文件数: {n_with_metadata}/{len(summary_df)}")
+        print(f"  Files with metadata written: {n_with_metadata}/{len(summary_df)}")
 
     except Exception as e:
-        print(f"批量质量评估失败: {e}")
+        print(f"Batch quality assessment failed: {e}")
         sys.exit(1)
 
 
@@ -1060,28 +1060,28 @@ def quality_resting_metrics(args):
             temp_dir=args.temp_dir,
         )
 
-        print(f"静息态指标计算完成:")
-        print(f"  输入目录: {input_dir}")
-        print(f"  输出目录: {output_dir}")
-        print(f"  处理文件数: {len(summary_df)}")
-        print(f"  失败文件数: {len(failed)}")
+        print(f"Resting-state metrics computation complete:")
+        print(f"  Input directory: {input_dir}")
+        print(f"  Output directory: {output_dir}")
+        print(f"  Files processed: {len(summary_df)}")
+        print(f"  Failed files: {len(failed)}")
 
         if len(summary_df) > 0 and "mean_reliability" in summary_df.columns:
             valid_rel = summary_df["mean_reliability"].dropna()
             if len(valid_rel) > 0:
-                print(f"  平均可靠性统计:")
-                print(f"    最小值: {valid_rel.min():.3f}")
-                print(f"    最大值: {valid_rel.max():.3f}")
-                print(f"    中位数: {valid_rel.median():.3f}")
-                print(f"    平均值: {valid_rel.mean():.3f}")
+                print(f"  Mean reliability statistics:")
+                print(f"    Min: {valid_rel.min():.3f}")
+                print(f"    Max: {valid_rel.max():.3f}")
+                print(f"    Median: {valid_rel.median():.3f}")
+                print(f"    Mean: {valid_rel.mean():.3f}")
 
         if len(failed) > 0:
-            print(f"  失败文件详情: {output_dir / 'failed_files.csv'}")
+            print(f"  Failed file details: {output_dir / 'failed_files.csv'}")
 
-        print(f"  汇总文件: {output_dir / 'resting_metrics_summary.csv'}")
+        print(f"  Summary file: {output_dir / 'resting_metrics_summary.csv'}")
 
     except Exception as e:
-        print(f"静息态指标计算失败: {e}")
+        print(f"Resting-state metrics computation failed: {e}")
         sys.exit(1)
 
 
@@ -1109,17 +1109,17 @@ def quality_visualize(args):
             dpi=args.dpi,
         )
 
-        print(f"质量评估可视化完成:")
-        print(f"  输出目录: {output_dir}")
+        print(f"Quality assessment visualization complete:")
+        print(f"  Output directory: {output_dir}")
 
         for viz_type, path in results.items():
             if path:
                 print(f"  {viz_type}: {path.name}")
             else:
-                print(f"  {viz_type}: 生成失败")
+                print(f"  {viz_type}: generation failed")
 
     except Exception as e:
-        print(f"质量评估可视化失败: {e}")
+        print(f"Quality assessment visualization failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1141,13 +1141,13 @@ def quality_visualize_batch(args):
         detail_files = list(output_dir.rglob("*_postfilter_detail.csv"))
 
         if not detail_files:
-            print(f"警告: 在 {output_dir} 中未找到质量评估数据")
+            print(f"Warning: no quality assessment data found in {output_dir}")
             print(
-                f"请先运行质量评估: multichsync quality batch --input-dir <dir> --output-dir {output_dir}"
+                f"Please run quality assessment first: multichsync quality batch --input-dir <dir> --output-dir {output_dir}"
             )
             return
 
-        print(f"找到 {len(detail_files)} 个质量评估数据文件")
+        print(f"Found {len(detail_files)} quality assessment data files")
 
         # Batch generate visualizations
         success_count = 0
@@ -1170,7 +1170,7 @@ def quality_visualize_batch(args):
                 snirf_files = list(input_dir.rglob(f"{stem}.snirf"))
 
             if not snirf_files:
-                print(f"  跳过 {stem}: 未找到 SNIRF 文件")
+                print(f"  Skipping {stem}: SNIRF file not found")
                 continue
 
             snirf_path = snirf_files[0]
@@ -1187,26 +1187,26 @@ def quality_visualize_batch(args):
 
                 if any(results.values()):
                     success_count += 1
-                    print(f"  完成: {stem}")
+                    print(f"  Done: {stem}")
                 else:
                     failed_files.append(stem)
-                    print(f"  失败: {stem}")
+                    print(f"  Failed: {stem}")
 
             except Exception as e:
                 failed_files.append(stem)
-                print(f"  错误 {stem}: {e}")
+                print(f"  Error {stem}: {e}")
 
-        print(f"\n批量可视化完成:")
-        print(f"  成功: {success_count}")
-        print(f"  失败: {len(failed_files)}")
+        print(f"\nBatch visualization complete:")
+        print(f"  Succeeded: {success_count}")
+        print(f"  Failed: {len(failed_files)}")
 
         if failed_files:
             print(
-                f"  失败文件: {', '.join(failed_files[:5])}{'...' if len(failed_files) > 5 else ''}"
+                f"  Failed files: {', '.join(failed_files[:5])}{'...' if len(failed_files) > 5 else ''}"
             )
 
     except Exception as e:
-        print(f"批量可视化失败: {e}")
+        print(f"Batch visualization failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1215,10 +1215,10 @@ def quality_visualize_batch(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="多模态神经影像数据转换工具",
+        description="Multi-modal neuroimaging data conversion tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
+Examples:
   %(prog)s fnirs convert --txt data.TXT --src-coords sources.csv --det-coords detectors.csv
   %(prog)s fnirs convert --txt data.TXT --src-coords sources.csv --det-coords detectors.csv --no-mne-patch
   %(prog)s fnirs batch --input-dir ./raw --src-coords sources.csv --det-coords detectors.csv --output-dir ./snirf
@@ -1239,167 +1239,167 @@ def main():
         """,
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="可用命令")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # fnirs subcommand
-    fnirs_parser = subparsers.add_parser("fnirs", help="fNIRS相关操作")
+    fnirs_parser = subparsers.add_parser("fnirs", help="fNIRS operations")
     fnirs_subparsers = fnirs_parser.add_subparsers(
-        dest="fnirs_command", help="fNIRS子命令"
+        dest="fnirs_command", help="fNIRS subcommands"
     )
 
     # fnirs convert
-    convert_parser = fnirs_subparsers.add_parser("convert", help="转换单个fNIRS文件")
+    convert_parser = fnirs_subparsers.add_parser("convert", help="Convert a single fNIRS file")
     convert_parser.add_argument(
-        "--txt-path", "--txt", required=True, help="fNIRS TXT文件路径"
+        "--txt-path", "--txt", required=True, help="Path to fNIRS TXT file"
     )
     convert_parser.add_argument(
-        "--src-coords", required=True, help="source坐标CSV文件路径"
+        "--src-coords", required=True, help="Path to source coordinates CSV"
     )
     convert_parser.add_argument(
-        "--det-coords", required=True, help="detector坐标CSV文件路径"
+        "--det-coords", required=True, help="Path to detector coordinates CSV"
     )
     convert_parser.add_argument(
-        "--output", "-o", help="输出SNIRF文件路径（默认：同名.snirf）"
+        "--output", "-o", help="Output SNIRF file path (default: same name .snirf)"
     )
     convert_parser.add_argument(
-        "--no-mne-patch", action="store_true", help="禁用MNE兼容性修复（默认启用）"
+        "--no-mne-patch", action="store_true", help="Disable MNE compatibility patch (default: enabled)"
     )
     convert_parser.set_defaults(func=fnirs_convert)
 
     # fnirs batch
-    batch_parser = fnirs_subparsers.add_parser("batch", help="批量转换fNIRS文件")
-    batch_parser.add_argument("--input-dir", "-i", required=True, help="输入目录路径")
+    batch_parser = fnirs_subparsers.add_parser("batch", help="Batch convert fNIRS files")
+    batch_parser.add_argument("--input-dir", "-i", required=True, help="Input directory path")
     batch_parser.add_argument(
-        "--src-coords", required=True, help="source坐标CSV文件路径"
+        "--src-coords", required=True, help="Path to source coordinates CSV"
     )
     batch_parser.add_argument(
-        "--det-coords", required=True, help="detector坐标CSV文件路径"
+        "--det-coords", required=True, help="Path to detector coordinates CSV"
     )
     batch_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：输入目录）"
+        "--output-dir", "-o", help="Output directory path (default: input directory)"
     )
     batch_parser.add_argument(
-        "--no-mne-patch", action="store_true", help="禁用MNE兼容性修复（默认启用）"
+        "--no-mne-patch", action="store_true", help="Disable MNE compatibility patch (default: enabled)"
     )
     batch_parser.set_defaults(func=fnirs_batch)
 
     # fnirs patch
     patch_parser = fnirs_subparsers.add_parser(
-        "patch", help="修复已存在的SNIRF文件以便MNE读取"
+        "patch", help="Patch existing SNIRF files for MNE compatibility"
     )
-    patch_parser.add_argument("--input", "-i", required=True, help="输入SNIRF文件路径")
+    patch_parser.add_argument("--input", "-i", required=True, help="Input SNIRF file path")
     patch_parser.add_argument(
-        "--output", "-o", help="输出SNIRF文件路径（默认：输入文件名_mne_fixed.snirf）"
+        "--output", "-o", help="Output SNIRF file path (default: input filename_mne_fixed.snirf)"
     )
     patch_parser.add_argument(
-        "--inplace", action="store_true", help="原地修复（覆盖原文件）"
+        "--inplace", action="store_true", help="Patch in-place (overwrite original)"
     )
     patch_parser.add_argument(
         "--dummy-wavelengths",
         type=float,
         nargs="+",
         default=[760.0, 850.0],
-        help="虚拟波长值（默认：760.0 850.0）",
+        help="Dummy wavelength values (default: 760.0 850.0)",
     )
     patch_parser.add_argument(
-        "--no-move-hbt", action="store_true", help="不移除HbT通道到aux（默认移除）"
+        "--no-move-hbt", action="store_true", help="Do not move HbT channel to aux (default: move)"
     )
     patch_parser.set_defaults(func=fnirs_patch)
 
     # ecg subcommand
-    ecg_parser = subparsers.add_parser("ecg", help="ECG相关操作")
-    ecg_subparsers = ecg_parser.add_subparsers(dest="ecg_command", help="ECG子命令")
+    ecg_parser = subparsers.add_parser("ecg", help="ECG operations")
+    ecg_subparsers = ecg_parser.add_subparsers(dest="ecg_command", help="ECG subcommands")
 
     # ecg convert
-    ecg_convert_parser = ecg_subparsers.add_parser("convert", help="转换单个ECG文件")
+    ecg_convert_parser = ecg_subparsers.add_parser("convert", help="Convert a single ECG file")
     ecg_convert_parser.add_argument(
-        "--acq-path", "--acq", required=True, help="ACQ文件路径"
+        "--acq-path", "--acq", required=True, help="Path to ACQ file"
     )
     ecg_convert_parser.add_argument(
         "--format",
         "-f",
         choices=["csv"],
         default="csv",
-        help="输出格式（仅支持csv，默认：csv）",
+        help="Output format (only csv supported, default: csv)",
     )
     ecg_convert_parser.add_argument(
-        "--output", "-o", help="输出文件路径（默认：自动生成）"
+        "--output", "-o", help="Output file path (default: auto-generated)"
     )
     ecg_convert_parser.add_argument(
         "--sampling-rate",
         "-r",
         type=int,
         default=250,
-        help="目标采样率（Hz，默认：250）",
+        help="Target sampling rate (Hz, default: 250)",
     )
     ecg_convert_parser.add_argument(
-        "--no-group", action="store_true", help="不按通道类型分组输出（仅CSV格式）"
+        "--no-group", action="store_true", help="Do not group output by channel type (CSV only)"
     )
     ecg_convert_parser.add_argument(
-        "--float-format", default="%.6f", help="浮点数格式（默认：%%.6f）"
+        "--float-format", default="%.6f", help="Float format string (default: %%.6f)"
     )
     ecg_convert_parser.set_defaults(func=ecg_convert)
 
     # ecg batch
-    ecg_batch_parser = ecg_subparsers.add_parser("batch", help="批量转换ECG文件")
+    ecg_batch_parser = ecg_subparsers.add_parser("batch", help="Batch convert ECG files")
     ecg_batch_parser.add_argument(
-        "--input-dir", "-i", required=True, help="输入目录路径"
+        "--input-dir", "-i", required=True, help="Input directory path"
     )
     ecg_batch_parser.add_argument(
         "--format",
         "-f",
         choices=["csv"],
         default="csv",
-        help="输出格式（仅支持csv，默认：csv）",
+        help="Output format (only csv supported, default: csv)",
     )
     ecg_batch_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：自动生成）"
+        "--output-dir", "-o", help="Output directory path (default: auto-generated)"
     )
     ecg_batch_parser.add_argument(
         "--sampling-rate",
         "-r",
         type=int,
         default=250,
-        help="目标采样率（Hz，默认：250）",
+        help="Target sampling rate (Hz, default: 250)",
     )
     ecg_batch_parser.add_argument(
-        "--no-group", action="store_true", help="不按通道类型分组输出（仅CSV格式）"
+        "--no-group", action="store_true", help="Do not group output by channel type (CSV only)"
     )
     ecg_batch_parser.add_argument(
-        "--float-format", default="%.6f", help="浮点数格式（默认：%%.6f）"
+        "--float-format", default="%.6f", help="Float format string (default: %%.6f)"
     )
     ecg_batch_parser.set_defaults(func=ecg_batch)
 
     # eeg subcommand
-    eeg_parser = subparsers.add_parser("eeg", help="EEG相关操作")
-    eeg_subparsers = eeg_parser.add_subparsers(dest="eeg_command", help="EEG子命令")
+    eeg_parser = subparsers.add_parser("eeg", help="EEG operations")
+    eeg_subparsers = eeg_parser.add_subparsers(dest="eeg_command", help="EEG subcommands")
 
     # eeg convert
-    eeg_convert_parser = eeg_subparsers.add_parser("convert", help="转换单个EEG文件")
+    eeg_convert_parser = eeg_subparsers.add_parser("convert", help="Convert a single EEG file")
     eeg_convert_parser.add_argument(
         "--file-path",
         "--file",
         required=True,
-        help="EEG文件路径（支持.set, .cdt等格式）",
+        help="EEG file path (supports .set, .cdt, etc.)",
     )
     eeg_convert_parser.add_argument(
         "--format",
         "-f",
         choices=["BrainVision", "EEGLAB", "EDF"],
         default="BrainVision",
-        help="输出格式（默认：BrainVision）",
+        help="Output format (default: BrainVision)",
     )
     eeg_convert_parser.add_argument(
-        "--output", "-o", help="输出文件路径（默认：自动生成）"
+        "--output", "-o", help="Output file path (default: auto-generated)"
     )
     eeg_convert_parser.add_argument(
-        "--preload", action="store_true", help="预加载数据到内存"
+        "--preload", action="store_true", help="Preload data into memory"
     )
     eeg_convert_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的文件"
+        "--overwrite", action="store_true", help="Overwrite existing files"
     )
     eeg_convert_parser.add_argument(
-        "--verbose", action="store_true", help="显示详细输出"
+        "--verbose", action="store_true", help="Show verbose output"
     )
     eeg_convert_parser.add_argument(
         "--sampling-rate",
@@ -1413,29 +1413,29 @@ def main():
     eeg_convert_parser.set_defaults(func=eeg_convert)
 
     # eeg batch
-    eeg_batch_parser = eeg_subparsers.add_parser("batch", help="批量转换EEG文件")
+    eeg_batch_parser = eeg_subparsers.add_parser("batch", help="Batch convert EEG files")
     eeg_batch_parser.add_argument(
-        "--input-dir", "-i", required=True, help="输入目录路径"
+        "--input-dir", "-i", required=True, help="Input directory path"
     )
     eeg_batch_parser.add_argument(
         "--format",
         "-f",
         choices=["BrainVision", "EEGLAB", "EDF"],
         default="BrainVision",
-        help="输出格式（默认：BrainVision）",
+        help="Output format (default: BrainVision)",
     )
     eeg_batch_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：自动生成）"
+        "--output-dir", "-o", help="Output directory path (default: auto-generated)"
     )
     eeg_batch_parser.add_argument(
-        "--preload", action="store_true", help="预加载数据到内存"
+        "--preload", action="store_true", help="Preload data into memory"
     )
     eeg_batch_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的文件"
+        "--overwrite", action="store_true", help="Overwrite existing files"
     )
-    eeg_batch_parser.add_argument("--verbose", action="store_true", help="显示详细输出")
+    eeg_batch_parser.add_argument("--verbose", action="store_true", help="Show verbose output")
     eeg_batch_parser.add_argument(
-        "--recursive", "-r", action="store_true", help="递归搜索子目录"
+        "--recursive", "-r", action="store_true", help="Recursively search subdirectories"
     )
     eeg_batch_parser.add_argument(
         "--sampling-rate",
@@ -1449,142 +1449,142 @@ def main():
     eeg_batch_parser.set_defaults(func=eeg_batch)
 
     # marker subcommand
-    marker_parser = subparsers.add_parser("marker", help="Marker提取相关操作")
+    marker_parser = subparsers.add_parser("marker", help="Marker extraction operations")
     marker_subparsers = marker_parser.add_subparsers(
-        dest="marker_command", help="Marker子命令"
+        dest="marker_command", help="Marker subcommands"
     )
 
     # marker extract
     marker_extract_parser = marker_subparsers.add_parser(
-        "extract", help="提取marker信息"
+        "extract", help="Extract marker information"
     )
     marker_extract_parser.add_argument(
-        "--input", "-i", required=True, help="输入文件路径"
+        "--input", "-i", required=True, help="Input file path"
     )
     marker_extract_parser.add_argument(
-        "--output", "-o", help="输出CSV文件路径（默认：输入文件名.marker.csv）"
+        "--output", "-o", help="Output CSV file path (default: input filename.marker.csv)"
     )
     marker_extract_parser.add_argument(
         "--type",
         choices=["biopac", "brainvision", "fnirs"],
-        help="文件类型（可选，默认根据扩展名猜测）",
+        help="File type (optional, auto-detected from extension by default)",
     )
     marker_extract_parser.add_argument(
-        "--fs", type=float, default=500, help="Biopac采样率（Hz，默认：500）"
+        "--fs", type=float, default=500, help="Biopac sampling rate (Hz, default: 500)"
     )
     marker_extract_parser.add_argument(
-        "--tolerance", type=float, default=0.2, help="Biopac电压容差（默认：0.2）"
+        "--tolerance", type=float, default=0.2, help="Biopac voltage tolerance (default: 0.2)"
     )
     marker_extract_parser.set_defaults(func=marker_extract)
 
     # marker batch
     marker_batch_parser = marker_subparsers.add_parser(
-        "batch", help="批量提取marker信息"
+        "batch", help="Batch extract marker information"
     )
     marker_batch_parser.add_argument(
         "--types",
         "-t",
-        help="要处理的类型，逗号分隔（默认：fnirs,ecg,eeg，如：fnirs,ecg）",
+        help="Types to process, comma separated (default: fnirs,ecg,eeg, e.g.: fnirs,ecg)",
     )
     marker_batch_parser.add_argument(
         "--fnirs-input",
-        help="fNIRS输入目录（默认：Data/raw/fnirs）",
+        help="fNIRS input directory (default: Data/raw/fnirs)",
     )
     marker_batch_parser.add_argument(
         "--fnirs-output",
-        help="fNIRS输出目录（默认：Data/marker/fnirs）",
+        help="fNIRS output directory (default: Data/marker/fnirs)",
     )
     marker_batch_parser.add_argument(
         "--ecg-input",
-        help="ECG输入目录（默认：Data/convert/ecg）",
+        help="ECG input directory (default: Data/convert/ecg)",
     )
     marker_batch_parser.add_argument(
         "--ecg-output",
-        help="ECG输出目录（默认：Data/marker/ecg）",
+        help="ECG output directory (default: Data/marker/ecg)",
     )
     marker_batch_parser.add_argument(
         "--eeg-input",
-        help="EEG输入目录（默认：Data/convert/eeg）",
+        help="EEG input directory (default: Data/convert/eeg)",
     )
     marker_batch_parser.add_argument(
         "--eeg-output",
-        help="EEG输出目录（默认：Data/marker/eeg）",
+        help="EEG output directory (default: Data/marker/eeg)",
     )
     marker_batch_parser.add_argument(
         "--fs",
         type=float,
         default=500,
-        help="ECG采样率（Hz，默认：500）",
+        help="ECG sampling rate (Hz, default: 500)",
     )
     marker_batch_parser.add_argument(
         "--tolerance",
         type=float,
         default=0.2,
-        help="ECG电压容差（默认：0.2）",
+        help="ECG voltage tolerance (default: 0.2)",
     )
     marker_batch_parser.add_argument(
-        "--skip-existing", action="store_true", help="跳过已存在的输出文件"
+        "--skip-existing", action="store_true", help="Skip existing output files"
     )
     marker_batch_parser.add_argument(
         "--max-files",
         type=int,
-        help="每种类型最多处理的文件数（默认：全部）",
+        help="Max files per type (default: all)",
     )
     marker_batch_parser.set_defaults(func=marker_batch)
 
     # marker clean
-    marker_clean_parser = marker_subparsers.add_parser("clean", help="清洗marker文件")
+    marker_clean_parser = marker_subparsers.add_parser("clean", help="Clean marker files")
     marker_clean_parser.add_argument(
-        "--input", "-i", required=True, help="输入文件或目录路径"
+        "--input", "-i", required=True, help="Input file or directory path"
     )
     marker_clean_parser.add_argument(
-        "--output-dir", help="输出目录路径（仅目录模式有效，默认：输入目录/cleaned）"
+        "--output-dir", help="Output directory path (directory mode only, default: input dir/cleaned)"
     )
     marker_clean_parser.add_argument(
-        "--inplace", action="store_true", help="原地清洗（覆盖原文件）"
+        "--inplace", action="store_true", help="Clean in-place (overwrite original)"
     )
     marker_clean_parser.add_argument(
         "--time-col",
-        help="时间列名（默认自动检测：Time(sec)/reference_time/time/Time）",
+        help="Time column name (auto-detected: Time(sec)/reference_time/time/Time)",
     )
     marker_clean_parser.add_argument(
-        "--min-rows", type=int, default=2, help="最小行数要求（默认：2）"
+        "--min-rows", type=int, default=2, help="Minimum row count (default: 2)"
     )
     marker_clean_parser.add_argument(
-        "--min-interval", type=float, default=1.0, help="最小时间间隔（秒，默认：1.0）"
+        "--min-interval", type=float, default=1.0, help="Minimum time interval (seconds, default: 1.0)"
     )
     marker_clean_parser.add_argument(
-        "--remove-start", action="store_true", help="删除第一个marker时间为0的记录"
+        "--remove-start", action="store_true", help="Remove records where first marker time is 0"
     )
     marker_clean_parser.set_defaults(func=marker_clean)
 
     # marker info
     marker_info_parser = marker_subparsers.add_parser(
-        "info", help="提取marker信息并生成报告"
+        "info", help="Extract marker information and generate reports"
     )
     marker_info_parser.add_argument(
-        "--input-dir", "-i", help="输入目录路径（默认：Data/marker）"
+        "--input-dir", "-i", help="Input directory path (default: Data/marker)"
     )
     marker_info_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：输入目录/info）"
+        "--output-dir", "-o", help="Output directory path (default: input dir/info)"
     )
     marker_info_parser.add_argument(
-        "--no-recursive", action="store_true", help="不递归搜索子目录（默认递归）"
+        "--no-recursive", action="store_true", help="Do not recursively search subdirectories (default: recursive)"
     )
     marker_info_parser.set_defaults(func=marker_info)
 
     # marker timeline
     marker_timeline_parser = marker_subparsers.add_parser(
-        "timeline", help="根据marker info报告生成多设备timeline可视化图"
+        "timeline", help="Generate multi-device timeline visualization from marker info reports"
     )
     marker_timeline_parser.add_argument(
-        "--input-dir", "-i", help="输入目录路径（包含subject_*_marker_report.csv，默认：Data/marker/info）"
+        "--input-dir", "-i", help="Input directory (with subject_*_marker_report.csv, default: Data/marker/info)"
     )
     marker_timeline_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：Data/marker/timeline）"
+        "--output-dir", "-o", help="Output directory path (default: Data/marker/timeline)"
     )
     marker_timeline_parser.add_argument(
-        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+        "--dpi", type=int, default=150, help="Image resolution (DPI, default: 150)"
     )
     marker_timeline_parser.add_argument(
         "--stack", action="store_true",
@@ -1594,103 +1594,103 @@ def main():
 
     # marker match
     marker_match_parser = marker_subparsers.add_parser(
-        "match", help="匹配多设备marker事件，生成共识时间线"
+        "match", help="Match multi-device marker events, generate consensus timeline"
     )
     input_group = marker_match_parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--input-dir", help="包含CSV文件的输入目录")
-    input_group.add_argument("--input-files", nargs="+", help="CSV文件路径列表，支持BIDS通配符（例如 *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg）")
+    input_group.add_argument("--input-dir", help="Input directory containing CSV files")
+    input_group.add_argument("--input-files", nargs="+", help="CSV file paths list, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg)")
     marker_match_parser.add_argument(
-        "--device-names", nargs="+", help="设备名称列表（与文件顺序对应）"
+        "--device-names", nargs="+", help="Device names list (corresponding to file order)"
     )
     marker_match_parser.add_argument(
         "--output-dir",
         default="Data/matching",
-        help="输出目录路径（默认：Data/matching）",
+        help="Output directory path (default: Data/matching)",
     )
     marker_match_parser.add_argument(
-        "--output-prefix", default="matched", help="输出文件前缀（默认：matched）"
+        "--output-prefix", default="matched", help="Output file prefix (default: matched)"
     )
     marker_match_parser.add_argument(
         "--method",
         choices=["hungarian", "mincostflow", "sinkhorn"],
         default="hungarian",
-        help="匹配算法（默认：hungarian，可选：hungarian/mincostflow/sinkhorn）",
+        help="Matching algorithm (default: hungarian, options: hungarian/mincostflow/sinkhorn)",
     )
     marker_match_parser.add_argument(
         "--max-time-diff",
         type=float,
         default=3.0,
-        help="最大时间差（秒）用于匹配（默认：3.0）",
+        help="Max time difference (seconds) for matching (default: 3.0)",
     )
     marker_match_parser.add_argument(
         "--sigma-time",
         type=float,
         default=0.75,
-        help="时间标准差（秒）用于置信度计算（默认：0.75）",
+        help="Time sigma (seconds) for confidence calculation (default: 0.75)",
     )
     marker_match_parser.add_argument(
-        "--no-drift-correction", action="store_true", help="禁用漂移校正（默认启用）"
+        "--no-drift-correction", action="store_true", help="Disable drift correction (default: enabled)"
     )
     marker_match_parser.add_argument(
         "--drift-method",
         choices=["linear", "theilsen"],
         default="linear",
-        help="漂移校正方法（默认：linear）",
+        help="Drift correction method (default: linear)",
     )
     marker_match_parser.add_argument(
-        "--no-json", action="store_true", help="不保存JSON元数据文件（默认保存）"
+        "--no-json", action="store_true", help="Do not save JSON metadata file (default: save)"
     )
     marker_match_parser.add_argument(
-        "--no-plots", action="store_true", help="不生成可视化图表（默认生成）"
+        "--no-plots", action="store_true", help="Do not generate visualization charts (default: generate)"
     )
     marker_match_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的输出文件"
+        "--overwrite", action="store_true", help="Overwrite existing output files"
     )
     marker_match_parser.set_defaults(func=marker_match)
 
     # marker crop subcommand - added to marker subparser
     marker_crop_parser = marker_subparsers.add_parser(
-        "crop", help="裁剪多设备timeline到统一时间范围"
+        "crop", help="Crop multi-device timeline to unified time range"
     )
     marker_crop_parser.add_argument(
-        "--timeline-csv", "-t", required=True, help="匹配后的timeline CSV文件路径"
+        "--timeline-csv", "-t", required=True, help="Path to matched timeline CSV file"
     )
     marker_crop_parser.add_argument(
-        "--metadata-json", "-m", required=True, help="匹配后的metadata JSON文件路径"
+        "--metadata-json", "-m", required=True, help="Path to matched metadata JSON file"
     )
     marker_crop_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：与timeline CSV同目录）"
+        "--output-dir", "-o", help="Output directory path (default: same directory as timeline CSV)"
     )
     marker_crop_parser.add_argument(
-        "--output-prefix", "-p", default="cropped", help="输出文件前缀（默认：cropped）"
+        "--output-prefix", "-p", default="cropped", help="Output file prefix (default: cropped)"
     )
     marker_crop_parser.add_argument(
-        "--no-metadata", action="store_true", help="不保存裁剪后的metadata JSON文件"
+        "--no-metadata", action="store_true", help="Do not save cropped metadata JSON file"
     )
     marker_crop_parser.set_defaults(func=marker_crop)
 
     # marker matchcrop subcommand - replaces both old matchcrop and matchcrop-aligned
     marker_matchcrop_parser = marker_subparsers.add_parser(
         "matchcrop",
-        help="按session裁剪多设备原始数据（自动确定taskname和参考设备）",
+        help="Crop multi-device raw data by session (auto-detect taskname and reference device)",
     )
     # Input: mutually exclusive batch vs single
     input_group_mc = marker_matchcrop_parser.add_mutually_exclusive_group()
     input_group_mc.add_argument(
         "--input-dir", "-i",
-        help="matching目录路径（批处理模式，扫描该目录下所有*_metadata.json）"
+        help="Matching directory path (batch mode, scans all *_metadata.json)"
     )
     input_group_mc.add_argument(
         "--json-path", "-j",
-        help="单个matched_metadata.json文件路径（单subject模式）"
+        help="Single matched_metadata.json file path (single subject mode)"
     )
     marker_matchcrop_parser.add_argument(
         "--output-dir", "-o",
-        help="输出目录路径（批处理默认: Data/matchcrop，单subject默认: matching/../matchcrop/subject-{id}/）"
+        help="Output directory path (batch default: Data/matchcrop, single subject default: matching/../matchcrop/subject-{id}/)"
     )
     marker_matchcrop_parser.add_argument(
         "--stacked-csv",
-        help="stacked_timeline CSV路径（可选，默认从metadata同目录自动查找）"
+        help="Stacked timeline CSV path (optional, auto-detected from metadata directory)"
     )
     marker_matchcrop_parser.add_argument(
         "--start-time",
@@ -1711,45 +1711,45 @@ def main():
     # marker manual-match subcommand - added to marker subparser
     marker_manual_match_parser = marker_subparsers.add_parser(
         "manual-match",
-        help="从BIDS文件直接匹配并应用手动偏移量"
+        help="Match directly from BIDS files and apply manual offsets"
     )
     marker_manual_match_parser.add_argument(
         "--input-files", nargs="+", required=True,
-        help="CSV文件路径列表，支持BIDS通配符（例如 *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg），直接匹配并应用偏移"
+        help="CSV file paths list, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg), match directly and apply offsets"
     )
     marker_manual_match_parser.add_argument(
         "--offsets", "-o", required=True,
-        help="偏移量列表（基于文件顺序）：例如 '[1.5, -0.3]' 或 JSON文件路径"
+        help="Offset list (based on file order): e.g. '[1.5, -0.3]' or JSON file path"
     )
     marker_manual_match_parser.add_argument(
         "--device-names", nargs="+",
-        help="设备名称列表（与--input-files文件顺序对应）"
+        help="Device names list (corresponding to --input-files order)"
     )
     marker_manual_match_parser.add_argument(
         "--output-dir",
         default="Data/matching",
-        help="输出目录路径（默认：Data/matching）"
+        help="Output directory path (default: Data/matching)"
     )
     marker_manual_match_parser.add_argument(
         "--prefix", "-p", default="manual",
-        help="输出文件前缀（默认：manual）"
+        help="Output file prefix (default: manual)"
     )
     marker_manual_match_parser.add_argument(
         "--add", action="store_true",
-        help="将偏移量添加到现有偏移量而不是替换"
+        help="Add offsets to existing offsets instead of replacing"
     )
     marker_manual_match_parser.add_argument(
         "--method", "-m", default="hungarian",
         choices=["hungarian", "mincostflow", "sinkhorn"],
-        help="匹配方法（默认：hungarian）"
+        help="Matching method (default: hungarian)"
     )
     marker_manual_match_parser.add_argument(
         "--sigma-time", type=float, default=0.75,
-        help="置信度计算的高斯sigma（默认：0.75）"
+        help="Gaussian sigma for confidence calculation (default: 0.75)"
     )
     marker_manual_match_parser.add_argument(
         "--max-time-diff", type=float, default=3.0,
-        help="匹配的最大时间差（默认：3.0）"
+        help="Max matching time difference (s, default: 3.0)"
     )
     marker_manual_match_parser.set_defaults(func=marker_manual_match)
 
@@ -1915,348 +1915,348 @@ def main():
     marker_basematch_parser.set_defaults(func=marker_basematch)
 
     # quality subcommand
-    quality_parser = subparsers.add_parser("quality", help="fNIRS数据质量评估相关操作")
+    quality_parser = subparsers.add_parser("quality", help="fNIRS data quality assessment operations")
     quality_subparsers = quality_parser.add_subparsers(
-        dest="quality_command", help="Quality子命令"
+        dest="quality_command", help="Quality subcommands"
     )
 
     # quality assess
     quality_assess_parser = quality_subparsers.add_parser(
-        "assess", help="评估单个SNIRF文件质量"
+        "assess", help="Assess quality of a single SNIRF file"
     )
     quality_assess_parser.add_argument(
-        "--input", "-i", required=True, help="SNIRF文件路径"
+        "--input", "-i", required=True, help="SNIRF file path"
     )
     quality_assess_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：输入文件所在目录/quality）"
+        "--output-dir", "-o", help="Output directory path (default: input file directory/quality)"
     )
     quality_assess_parser.add_argument(
-        "--l-freq", type=float, default=0.01, help="低通滤波频率（Hz，默认：0.01）"
+        "--l-freq", type=float, default=0.01, help="Low-pass filter frequency (Hz, default: 0.01)"
     )
     quality_assess_parser.add_argument(
-        "--h-freq", type=float, default=0.2, help="高通滤波频率（Hz，默认：0.2）"
+        "--h-freq", type=float, default=0.2, help="High-pass filter frequency (Hz, default: 0.2)"
     )
     quality_assess_parser.add_argument(
         "--resample-sfreq",
         type=float,
         default=4.0,
-        help="重采样频率（Hz，默认：4.0，设为0表示不重采样）",
+        help="Resampling frequency (Hz, default: 4.0, set to 0 to disable resampling)",
     )
     quality_assess_parser.add_argument(
-        "--no-tddr", action="store_true", help="不应用TDDR（默认启用）"
+        "--no-tddr", action="store_true", help="Disable TDDR (default: enabled)"
     )
     quality_assess_parser.add_argument(
         "--signal-band-min",
         type=float,
         default=0.01,
-        help="信号频带下限（Hz，默认：0.01）",
+        help="Signal band lower limit (Hz, default: 0.01)",
     )
     quality_assess_parser.add_argument(
         "--signal-band-max",
         type=float,
         default=0.2,
-        help="信号频带上限（Hz，默认：0.2）",
+        help="Signal band upper limit (Hz, default: 0.2)",
     )
     quality_assess_parser.add_argument(
         "--noise-band-min",
         type=float,
         default=0.2,
-        help="噪声频带下限（Hz，默认：0.2）",
+        help="Noise band lower limit (Hz, default: 0.2)",
     )
     quality_assess_parser.add_argument(
         "--noise-band-max",
         type=float,
         default=0.5,
-        help="噪声频带上限（Hz，默认：0.5）",
+        help="Noise band upper limit (Hz, default: 0.5)",
     )
     quality_assess_parser.add_argument(
         "--no-comprehensive",
         action="store_true",
-        help="禁用基于信号水平的综合质量评估（默认启用）",
+        help="Disable signal-level comprehensive quality assessment (default: enabled)",
     )
     quality_assess_parser.add_argument(
         "--paradigm",
         choices=["task", "resting"],
         default="resting",
-        help="实验范式（默认：resting）",
+        help="Experimental paradigm (default: resting)",
     )
     quality_assess_parser.set_defaults(func=quality_assess)
 
     # quality batch
     quality_batch_parser = quality_subparsers.add_parser(
-        "batch", help="批量评估SNIRF文件质量"
+        "batch", help="Batch assess SNIRF file quality"
     )
     quality_batch_parser.add_argument(
-        "--input-dir", "-i", required=True, help="SNIRF文件目录路径"
+        "--input-dir", "-i", required=True, help="SNIRF file directory path"
     )
     quality_batch_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：输入目录/quality）"
+        "--output-dir", "-o", help="Output directory path (default: input directory/quality)"
     )
     quality_batch_parser.add_argument(
-        "--l-freq", type=float, default=0.01, help="低通滤波频率（Hz，默认：0.01）"
+        "--l-freq", type=float, default=0.01, help="Low-pass filter frequency (Hz, default: 0.01)"
     )
     quality_batch_parser.add_argument(
-        "--h-freq", type=float, default=0.2, help="高通滤波频率（Hz，默认：0.2）"
+        "--h-freq", type=float, default=0.2, help="High-pass filter frequency (Hz, default: 0.2)"
     )
     quality_batch_parser.add_argument(
         "--resample-sfreq",
         type=float,
         default=4.0,
-        help="重采样频率（Hz，默认：4.0，设为0表示不重采样）",
+        help="Resampling frequency (Hz, default: 4.0, set to 0 to disable resampling)",
     )
     quality_batch_parser.add_argument(
-        "--no-tddr", action="store_true", help="不应用TDDR（默认启用）"
+        "--no-tddr", action="store_true", help="Disable TDDR (default: enabled)"
     )
     quality_batch_parser.add_argument(
         "--signal-band-min",
         type=float,
         default=0.01,
-        help="信号频带下限（Hz，默认：0.01）",
+        help="Signal band lower limit (Hz, default: 0.01)",
     )
     quality_batch_parser.add_argument(
         "--signal-band-max",
         type=float,
         default=0.2,
-        help="信号频带上限（Hz，默认：0.2）",
+        help="Signal band upper limit (Hz, default: 0.2)",
     )
     quality_batch_parser.add_argument(
         "--noise-band-min",
         type=float,
         default=0.2,
-        help="噪声频带下限（Hz，默认：0.2）",
+        help="Noise band lower limit (Hz, default: 0.2)",
     )
     quality_batch_parser.add_argument(
         "--noise-band-max",
         type=float,
         default=0.5,
-        help="噪声频带上限（Hz，默认：0.5）",
+        help="Noise band upper limit (Hz, default: 0.5)",
     )
     quality_batch_parser.add_argument(
         "--no-comprehensive",
         action="store_true",
-        help="禁用基于信号水平的综合质量评估（默认启用）",
+        help="Disable signal-level comprehensive quality assessment (default: enabled)",
     )
     quality_batch_parser.add_argument(
         "--paradigm",
         choices=["task", "resting"],
         default="resting",
-        help="实验范式（默认：resting）",
+        help="Experimental paradigm (default: resting)",
     )
     quality_batch_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的输出文件"
+        "--overwrite", action="store_true", help="Overwrite existing output files"
     )
     quality_batch_parser.set_defaults(func=quality_batch)
 
     # quality assess-with-metadata
     quality_assess_metadata_parser = quality_subparsers.add_parser(
-        "assess-with-metadata", help="评估单个SNIRF文件质量并将结果写入元数据"
+        "assess-with-metadata", help="Assess single SNIRF file quality and write results to metadata"
     )
     quality_assess_metadata_parser.add_argument(
-        "--input", "-i", required=True, help="SNIRF文件路径"
+        "--input", "-i", required=True, help="SNIRF file path"
     )
     quality_assess_metadata_parser.add_argument(
         "--output-dir",
         "-o",
-        help="输出目录路径（默认：输入文件所在目录/quality_with_metadata）",
+        help="Output directory path (default: input file directory/quality_with_metadata)",
     )
     quality_assess_metadata_parser.add_argument(
-        "--l-freq", type=float, default=0.01, help="低通滤波频率（Hz，默认：0.01）"
+        "--l-freq", type=float, default=0.01, help="Low-pass filter frequency (Hz, default: 0.01)"
     )
     quality_assess_metadata_parser.add_argument(
-        "--h-freq", type=float, default=0.2, help="高通滤波频率（Hz，默认：0.2）"
+        "--h-freq", type=float, default=0.2, help="High-pass filter frequency (Hz, default: 0.2)"
     )
     quality_assess_metadata_parser.add_argument(
         "--resample-sfreq",
         type=float,
         default=4.0,
-        help="重采样频率（Hz，默认：4.0，设为0表示不重采样）",
+        help="Resampling frequency (Hz, default: 4.0, set to 0 to disable resampling)",
     )
     quality_assess_metadata_parser.add_argument(
-        "--no-tddr", action="store_true", help="不应用TDDR（默认启用）"
+        "--no-tddr", action="store_true", help="Disable TDDR (default: enabled)"
     )
     quality_assess_metadata_parser.add_argument(
         "--signal-band-min",
         type=float,
         default=0.01,
-        help="信号频带下限（Hz，默认：0.01）",
+        help="Signal band lower limit (Hz, default: 0.01)",
     )
     quality_assess_metadata_parser.add_argument(
         "--signal-band-max",
         type=float,
         default=0.2,
-        help="信号频带上限（Hz，默认：0.2）",
+        help="Signal band upper limit (Hz, default: 0.2)",
     )
     quality_assess_metadata_parser.add_argument(
         "--noise-band-min",
         type=float,
         default=0.2,
-        help="噪声频带下限（Hz，默认：0.2）",
+        help="Noise band lower limit (Hz, default: 0.2)",
     )
     quality_assess_metadata_parser.add_argument(
         "--noise-band-max",
         type=float,
         default=0.5,
-        help="噪声频带上限（Hz，默认：0.5）",
+        help="Noise band upper limit (Hz, default: 0.5)",
     )
     quality_assess_metadata_parser.add_argument(
         "--no-comprehensive",
         action="store_true",
-        help="禁用基于信号水平的综合质量评估（默认启用）",
+        help="Disable signal-level comprehensive quality assessment (default: enabled)",
     )
     quality_assess_metadata_parser.add_argument(
         "--paradigm",
         choices=["task", "resting"],
         default="resting",
-        help="实验范式（默认：resting）",
+        help="Experimental paradigm (default: resting)",
     )
     quality_assess_metadata_parser.add_argument(
-        "--no-metadata", action="store_true", help="不将元数据写入SNIRF文件（默认写入）"
+        "--no-metadata", action="store_true", help="Do not write metadata to SNIRF file (default: write)"
     )
     quality_assess_metadata_parser.add_argument(
-        "--output-snirf", help="输出SNIRF文件路径（默认：自动生成_processed.snirf）"
+        "--output-snirf", help="Output SNIRF file path (default: auto-generated _processed.snirf)"
     )
     quality_assess_metadata_parser.add_argument(
-        "--no-report-csv", action="store_true", help="不生成单行CSV报告（默认生成）"
+        "--no-report-csv", action="store_true", help="Do not generate single-row CSV report (default: generate)"
     )
     quality_assess_metadata_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的输出文件"
+        "--overwrite", action="store_true", help="Overwrite existing output files"
     )
     quality_assess_metadata_parser.set_defaults(func=quality_assess_with_metadata)
 
     # quality batch-with-metadata
     quality_batch_metadata_parser = quality_subparsers.add_parser(
-        "batch-with-metadata", help="批量评估SNIRF文件质量并将结果写入元数据"
+        "batch-with-metadata", help="Batch assess SNIRF file quality and write results to metadata"
     )
     quality_batch_metadata_parser.add_argument(
-        "--input-dir", "-i", required=True, help="SNIRF文件目录路径"
+        "--input-dir", "-i", required=True, help="SNIRF file directory path"
     )
     quality_batch_metadata_parser.add_argument(
         "--output-dir",
         "-o",
-        help="输出目录路径（默认：输入目录/quality_with_metadata）",
+        help="Output directory path (default: input directory/quality_with_metadata)",
     )
     quality_batch_metadata_parser.add_argument(
-        "--l-freq", type=float, default=0.01, help="低通滤波频率（Hz，默认：0.01）"
+        "--l-freq", type=float, default=0.01, help="Low-pass filter frequency (Hz, default: 0.01)"
     )
     quality_batch_metadata_parser.add_argument(
-        "--h-freq", type=float, default=0.2, help="高通滤波频率（Hz，默认：0.2）"
+        "--h-freq", type=float, default=0.2, help="High-pass filter frequency (Hz, default: 0.2)"
     )
     quality_batch_metadata_parser.add_argument(
         "--resample-sfreq",
         type=float,
         default=4.0,
-        help="重采样频率（Hz，默认：4.0，设为0表示不重采样）",
+        help="Resampling frequency (Hz, default: 4.0, set to 0 to disable resampling)",
     )
     quality_batch_metadata_parser.add_argument(
-        "--no-tddr", action="store_true", help="不应用TDDR（默认启用）"
+        "--no-tddr", action="store_true", help="Disable TDDR (default: enabled)"
     )
     quality_batch_metadata_parser.add_argument(
         "--signal-band-min",
         type=float,
         default=0.01,
-        help="信号频带下限（Hz，默认：0.01）",
+        help="Signal band lower limit (Hz, default: 0.01)",
     )
     quality_batch_metadata_parser.add_argument(
         "--signal-band-max",
         type=float,
         default=0.2,
-        help="信号频带上限（Hz，默认：0.2）",
+        help="Signal band upper limit (Hz, default: 0.2)",
     )
     quality_batch_metadata_parser.add_argument(
         "--noise-band-min",
         type=float,
         default=0.2,
-        help="噪声频带下限（Hz，默认：0.2）",
+        help="Noise band lower limit (Hz, default: 0.2)",
     )
     quality_batch_metadata_parser.add_argument(
         "--noise-band-max",
         type=float,
         default=0.5,
-        help="噪声频带上限（Hz，默认：0.5）",
+        help="Noise band upper limit (Hz, default: 0.5)",
     )
     quality_batch_metadata_parser.add_argument(
         "--no-comprehensive",
         action="store_true",
-        help="禁用基于信号水平的综合质量评估（默认启用）",
+        help="Disable signal-level comprehensive quality assessment (default: enabled)",
     )
     quality_batch_metadata_parser.add_argument(
         "--paradigm",
         choices=["task", "resting"],
         default="resting",
-        help="实验范式（默认：resting）",
+        help="Experimental paradigm (default: resting)",
     )
     quality_batch_metadata_parser.add_argument(
-        "--no-metadata", action="store_true", help="不将元数据写入SNIRF文件（默认写入）"
+        "--no-metadata", action="store_true", help="Do not write metadata to SNIRF file (default: write)"
     )
     quality_batch_metadata_parser.add_argument(
-        "--no-report-csv", action="store_true", help="不生成单行CSV报告（默认生成）"
+        "--no-report-csv", action="store_true", help="Do not generate single-row CSV report (default: generate)"
     )
     quality_batch_metadata_parser.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的输出文件"
+        "--overwrite", action="store_true", help="Overwrite existing output files"
     )
     quality_batch_metadata_parser.set_defaults(func=quality_batch_with_metadata)
 
     # quality resting-metrics
     quality_resting_metrics_parser = quality_subparsers.add_parser(
-        "resting-metrics", help="批量计算fNIRS文件的静息态指标"
+        "resting-metrics", help="Batch compute resting-state metrics for fNIRS files"
     )
     quality_resting_metrics_parser.add_argument(
-        "--input-dir", "-i", required=True, help="SNIRF文件目录路径"
+        "--input-dir", "-i", required=True, help="SNIRF file directory path"
     )
     quality_resting_metrics_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：输入目录/resting_metrics）"
+        "--output-dir", "-o", help="Output directory path (default: input dir/resting_metrics)"
     )
     quality_resting_metrics_parser.add_argument(
         "--temp-dir",
-        help="临时目录路径（用于存储补丁后的文件，默认：输出目录/temp_patched）",
+        help="Temporary directory (for storing patched files, default: output dir/temp_patched)",
     )
     quality_resting_metrics_parser.set_defaults(func=quality_resting_metrics)
 
     # quality visualize
     quality_visualize_parser = quality_subparsers.add_parser(
-        "visualize", help="生成质量评估可视化图表"
+        "visualize", help="Generate quality assessment visualization charts"
     )
     quality_visualize_parser.add_argument(
-        "--input", "-i", required=True, help="SNIRF文件路径"
+        "--input", "-i", required=True, help="SNIRF file path"
     )
     quality_visualize_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：与输入文件相同目录）"
+        "--output-dir", "-o", help="Output directory path (default: same directory as input file)"
     )
     quality_visualize_parser.add_argument(
-        "--no-heatmap", action="store_true", help="不生成通道质量热图"
+        "--no-heatmap", action="store_true", help="Do not generate channel quality heatmap"
     )
     quality_visualize_parser.add_argument(
-        "--no-snr", action="store_true", help="不生成信噪比分布图"
+        "--no-snr", action="store_true", help="Do not generate SNR distribution plot"
     )
     quality_visualize_parser.add_argument(
-        "--no-correlation", action="store_true", help="不生成HbO-HbR相关性图"
+        "--no-correlation", action="store_true", help="Do not generate HbO-HbR correlation plot"
     )
     quality_visualize_parser.add_argument(
-        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+        "--dpi", type=int, default=150, help="Image resolution (DPI, default: 150)"
     )
     quality_visualize_parser.set_defaults(func=quality_visualize)
 
     # quality visualize-batch
     quality_visualize_batch_parser = quality_subparsers.add_parser(
-        "visualize-batch", help="批量生成质量评估可视化图表"
+        "visualize-batch", help="批量Generate quality assessment visualization charts"
     )
     quality_visualize_batch_parser.add_argument(
-        "--input-dir", "-i", required=True, help="SNIRF文件目录路径"
+        "--input-dir", "-i", required=True, help="SNIRF file directory path"
     )
     quality_visualize_batch_parser.add_argument(
-        "--output-dir", "-o", help="输出目录路径（默认：与输入目录相同）"
+        "--output-dir", "-o", help="Output directory path (default: same as input directory)"
     )
     quality_visualize_batch_parser.add_argument(
-        "--no-heatmap", action="store_true", help="不生成通道质量热图"
+        "--no-heatmap", action="store_true", help="Do not generate channel quality heatmap"
     )
     quality_visualize_batch_parser.add_argument(
-        "--no-snr", action="store_true", help="不生成信噪比分布图"
+        "--no-snr", action="store_true", help="Do not generate SNR distribution plot"
     )
     quality_visualize_batch_parser.add_argument(
-        "--no-correlation", action="store_true", help="不生成HbO-HbR相关性图"
+        "--no-correlation", action="store_true", help="Do not generate HbO-HbR correlation plot"
     )
     quality_visualize_batch_parser.add_argument(
-        "--dpi", type=int, default=150, help="图像分辨率（默认：150）"
+        "--dpi", type=int, default=150, help="Image resolution (DPI, default: 150)"
     )
     quality_visualize_batch_parser.set_defaults(func=quality_visualize_batch)
 
