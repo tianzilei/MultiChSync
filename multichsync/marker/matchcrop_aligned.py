@@ -935,7 +935,7 @@ def matchcrop_by_sessions(
             if dev_ses is None:
                 msg = f"    {device}: no data in this session range (gaps), skipped"
                 print(msg)
-                ses_result["devices"][device] = {"status": "skipped_gap"}
+                ses_result["devices"][device] = {"status": "skipped_gap", "reason": msg}
                 continue
 
             # Find the converted data file (try exact session match first)
@@ -971,7 +971,7 @@ def matchcrop_by_sessions(
             if converted_file is None:
                 msg = f"    {device}: converted file not found for ses-{dev_ses:02d}, skipped"
                 print(msg)
-                ses_result["devices"][device] = {"status": "file_not_found"}
+                ses_result["devices"][device] = {"status": "file_not_found", "reason": msg}
                 results["errors"].append(msg)
                 continue
 
@@ -1018,14 +1018,14 @@ def matchcrop_by_sessions(
                        f"{device_end:.1f}]s is far negative "
                        f"(effective_shift={effective_shift:.1f}s), skipped")
                 print(msg)
-                ses_result["devices"][device] = {"status": "skipped_shift_mismatch"}
+                ses_result["devices"][device] = {"status": "skipped_shift_mismatch", "reason": msg}
                 shift_sane = False
             if shift_sane and device_start > 1e8:
                 msg = (f"    {device}: device time start {device_start:.0f}s is "
                        f"suspiciously large (effective_shift={effective_shift:.1f}s), "
                        f"skipped")
                 print(msg)
-                ses_result["devices"][device] = {"status": "skipped_shift_mismatch"}
+                ses_result["devices"][device] = {"status": "skipped_shift_mismatch", "reason": msg}
                 shift_sane = False
             # Build output BIDS filename from the actual data file.
             # e.g. "sub-100_ses-01_task-rest_fnirs.snirf"
@@ -1040,7 +1040,7 @@ def matchcrop_by_sessions(
                 msg = (f"    {device}: shift mismatch, copied {converted_file.name} as-is "
                        f"→ {final_bids_stem}.*")
                 print(msg)
-                ses_result["devices"][device] = {"status": "copied_asis"}
+                ses_result["devices"][device] = {"status": "copied_asis", "reason": msg}
                 continue
 
             print(f"    {device}: cropping from {converted_file.name} "
@@ -1103,13 +1103,13 @@ def matchcrop_by_sessions(
                 msg = (f"    {device}: crop range outside data, copied "
                        f"{converted_file.name} as-is → {final_bids_stem}.*")
                 print(msg)
-                ses_result["devices"][device] = {"status": "copied_asis"}
+                ses_result["devices"][device] = {"status": "copied_asis", "reason": msg}
             except Exception as e:
                 msg = f"    {device}: crop failed: {e}"
                 print(msg)
                 import traceback
                 traceback.print_exc()
-                ses_result["devices"][device] = {"status": "error", "error": str(e)}
+                ses_result["devices"][device] = {"status": "error", "error": str(e), "reason": msg}
                 results["errors"].append(msg)
         # Count per-session stats
         n_ok = sum(1 for d in ses_result["devices"].values() if d.get("status") == "ok")
@@ -1155,6 +1155,30 @@ def matchcrop_by_sessions(
             print(f"    Warning: could not save crop timeline figure ({e})")
 
         results["sessions"][ses_bids] = ses_result
+
+    # ── 9. Save no-crop report (devices not successfully cropped) ─────
+    no_crop_entries: List[Dict] = []
+    for ses_bids, ses_res in results.get("sessions", {}).items():
+        for dev, dev_res in ses_res.get("devices", {}).items():
+            status = dev_res.get("status")
+            if status != "ok":
+                no_crop_entries.append({
+                    "session": ses_bids,
+                    "device": dev,
+                    "status": status,
+                    "reason": dev_res.get("reason", dev_res.get("error", str(status))),
+                })
+
+    if no_crop_entries:
+        no_crop_report = {
+            "subject_id": subject_id,
+            "taskname": taskname or old_taskname,
+            "no_crop_devices": no_crop_entries,
+        }
+        no_crop_path = output_root / "no_crop_report.json"
+        with open(no_crop_path, "w", encoding="utf-8") as f:
+            json.dump(no_crop_report, f, indent=2)
+        print(f"  No-crop report saved: {no_crop_path}")
 
     return results
 
@@ -1301,6 +1325,33 @@ def batch_matchcrop_from_matching_dir(
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+
+    # Save batch-level no-crop report
+    all_no_crop_entries: List[Dict] = []
+    for sid, r in overall_results.items():
+        if not isinstance(r, dict) or "sessions" not in r:
+            continue
+        for ses_bids, ses_res in r.get("sessions", {}).items():
+            for dev, dev_res in ses_res.get("devices", {}).items():
+                status = dev_res.get("status")
+                if status != "ok":
+                    all_no_crop_entries.append({
+                        "subject_id": sid,
+                        "session": ses_bids,
+                        "device": dev,
+                        "status": status,
+                        "reason": dev_res.get("reason", dev_res.get("error", str(status))),
+                    })
+
+    if all_no_crop_entries:
+        no_crop_report = {
+            "taskname": effective_taskname,
+            "no_crop_devices": all_no_crop_entries,
+        }
+        no_crop_path = Path(output_dir) / "no_crop_report.json"
+        with open(no_crop_path, "w", encoding="utf-8") as f:
+            json.dump(no_crop_report, f, indent=2)
+        print(f"No-crop report saved: {no_crop_path}")
 
     print(f"\n{'='*60}")
     print(f"Batch complete: {total_ok} OK, {total_err} failed")
