@@ -19,7 +19,6 @@ from .marker import (
     clean_marker_csv,
     clean_marker_folder,
     extract_marker_info,
-    generate_timeline_figures,
     clean_marker_folder,
 )
 from .marker.timeline_cropper import crop_timelines_to_shortest
@@ -420,15 +419,17 @@ def marker_clean(args):
 
 
 def marker_info(args):
-    """处理marker信息提取命令"""
+    """处理marker信息提取+timeline生成命令"""
     try:
         from pathlib import Path
+        from multichsync.marker.timeline import generate_timeline_figures
 
         input_dir = Path(args.input_dir) if args.input_dir else Path("Data/marker")
         output_dir = Path(args.output_dir) if args.output_dir else input_dir / "info"
 
         recursive = not args.no_recursive
 
+        # Step 1: Extract marker info reports
         reports = extract_marker_info(
             input_dir=input_dir, output_dir=output_dir, recursive=recursive
         )
@@ -443,137 +444,29 @@ def marker_info(args):
         for subj_name, report_path in reports["subject_reports"].items():
             print(f"      Subject {subj_name}: {report_path}")
 
+        # Step 2: Generate timeline figures and alignment JSONs
+        dpi = getattr(args, "dpi", 150)
+        timeline = generate_timeline_figures(
+            input_dir=output_dir,
+            output_dir=output_dir,
+            dpi=dpi,
+        )
+
+        print(f"\nTimeline figures & alignment JSONs generated: {len(timeline)} subject(s)")
+        for subj, paths in sorted(timeline.items()):
+            print(f"  {subj}:")
+            print(f"    figure: {paths['figure'].name}")
+            print(f"    alignment: {paths['alignment_json'].name}")
+
     except Exception as e:
         print(f"Marker info extraction failed: {e}")
         sys.exit(1)
 
 
-def marker_timeline(args):
-    """处理marker timeline可视化生成命令"""
-    try:
-        from pathlib import Path
-
-        input_dir = Path(args.input_dir) if args.input_dir else Path("Data/marker/info")
-        output_dir = Path(args.output_dir) if args.output_dir else Path("Data/marker/timeline")
-
-        saved = generate_timeline_figures(
-            input_dir=input_dir,
-            output_dir=output_dir,
-            dpi=args.dpi,
-            stack=args.stack,
-        )
-
-        print(f"Timeline visualization generation complete:")
-        print(f"  Input directory: {input_dir}")
-        print(f"  Output directory: {output_dir}")
-        print(f"  Files generated: {len(saved)}")
-        print(f"  Mode: {'stack (per-device)' if args.stack else 'combined'}")
-        for subj, path in sorted(saved.items()):
-            print(f"    {subj}: {path.name}")
-
-    except Exception as e:
-        print(f"Timeline visualization generation failed: {e}")
-        sys.exit(1)
 
 
-def marker_match(args):
-    """处理多设备marker匹配命令"""
-    try:
-        from pathlib import Path
-        from multichsync.marker import match_multiple_files_enhanced
 
-        # Get file list
-        if args.input_dir:
-            # Read files from directory
-            input_dir = Path(args.input_dir)
-            if not input_dir.exists():
-                raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
 
-            # Find CSV files
-            csv_files = list(input_dir.glob("*.csv"))
-            if len(csv_files) < 2:
-                raise ValueError(
-                    f"At least 2 CSV files required for matching, but only {len(csv_files)} found"
-                )
-
-            # Sort for consistency
-            csv_files.sort()
-            file_paths = [str(f) for f in csv_files]
-            print(f"Loading {len(file_paths)} files from directory: {input_dir}")
-        elif args.input_files:
-            # Directly specify file list
-            file_paths = []
-            for f in args.input_files:
-                p = Path(f)
-                if p.exists():
-                    file_paths.append(str(p))
-                else:
-                    raise FileNotFoundError(f"File not found: {f}")
-
-            print(f"Loading {len(file_paths)} specified files")
-        else:
-            raise ValueError("Must provide --input-dir or --input-files")
-
-        # Device name (optional)
-        device_names = args.device_names if args.device_names else None
-
-        # Output directory
-        output_dir = args.output_dir if args.output_dir else "Data/matching"
-
-        # Map CLI method names to internal method names
-        internal_method = METHOD_NAME_MAPPING[args.method]
-
-        # Call matching function
-        results = match_multiple_files_enhanced(
-            file_paths=file_paths,
-            device_names=device_names,
-            method=internal_method,
-            max_time_diff_s=args.max_time_diff,
-            sigma_time_s=args.sigma_time,
-            estimate_drift=not args.no_drift_correction,
-            drift_method=args.drift_method,
-            output_dir=output_dir,
-            output_prefix=args.output_prefix,
-            save_json=not args.no_json,
-            generate_plots=not args.no_plots,
-        )
-
-        # Print result summary
-        print(f"Matching complete!")
-        print(f"  Output directory: {output_dir}")
-        print(f"  Timeline CSV: {output_dir}/{args.output_prefix}_timeline.csv")
-        print(f"  Metadata JSON: {output_dir}/{args.output_prefix}_metadata.json")
-        print(f"  Consensus events: {results.get('n_consensus_events', 'N/A')}")
-        print(f"  Total matches: {results.get('total_matches', 'N/A')}")
-        mean_conf = results.get("mean_confidence", "N/A")
-        print(
-            f"  Mean confidence: {mean_conf if isinstance(mean_conf, str) else f'{mean_conf:.3f}'}"
-        )
-
-        # Print device statistics
-        if "device_stats" in results:
-            print(f"  Device statistics:")
-            for stat in results["device_stats"]:
-                dev_conf = stat.get("mean_confidence", "N/A")
-                print(
-                    f"    {stat['device']}: {stat['n_matches']} matches, confidence {dev_conf if isinstance(dev_conf, str) else f'{dev_conf:.3f}'}"
-                )
-
-        # Print drift correction
-        if "drift_corrections" in results:
-            print(f"  Drift correction:")
-            for i, drift in enumerate(results["drift_corrections"]):
-                if drift:
-                    print(
-                        f"    Device {i + 1}: offset {drift.get('offset', 0):.3f}s, scale {drift.get('scale', 1):.5f}, R^2={drift.get('r_squared', 0):.3f}"
-                    )
-
-    except Exception as e:
-        print(f"Marker matching failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
 
 
 def marker_crop(args):
@@ -827,16 +720,7 @@ def marker_manual_match(args):
         sys.exit(1)
 
 
-def marker_traversal_match(args):
-    """Traversal shift-search matching handler."""
-    try:
-        from multichsync.marker.traversal_matcher import match_traversal_cli
-        match_traversal_cli(args)
-    except Exception as e:
-        print(f"Traversal matching failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+
 
 
 def marker_basematch(args):
@@ -1571,82 +1455,12 @@ Examples:
     marker_info_parser.add_argument(
         "--no-recursive", action="store_true", help="Do not recursively search subdirectories (default: recursive)"
     )
+    marker_info_parser.add_argument(
+        "--dpi", type=int, default=150, help="Timeline figure resolution (DPI, default: 150)"
+    )
     marker_info_parser.set_defaults(func=marker_info)
 
-    # marker timeline
-    marker_timeline_parser = marker_subparsers.add_parser(
-        "timeline", help="Generate multi-device timeline visualization from marker info reports"
-    )
-    marker_timeline_parser.add_argument(
-        "--input-dir", "-i", help="Input directory (with subject_*_marker_report.csv, default: Data/marker/info)"
-    )
-    marker_timeline_parser.add_argument(
-        "--output-dir", "-o", help="Output directory path (default: Data/marker/timeline)"
-    )
-    marker_timeline_parser.add_argument(
-        "--dpi", type=int, default=150, help="Image resolution (DPI, default: 150)"
-    )
-    marker_timeline_parser.add_argument(
-        "--stack", action="store_true",
-        help="每个设备只显示一条分段timeline，各session按文件名升序首尾相接排列（默认：每个session显示独立条形）"
-    )
-    marker_timeline_parser.set_defaults(func=marker_timeline)
 
-    # marker match
-    marker_match_parser = marker_subparsers.add_parser(
-        "match", help="Match multi-device marker events, generate consensus timeline"
-    )
-    input_group = marker_match_parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--input-dir", help="Input directory containing CSV files")
-    input_group.add_argument("--input-files", nargs="+", help="CSV file paths list, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg)")
-    marker_match_parser.add_argument(
-        "--device-names", nargs="+", help="Device names list (corresponding to file order)"
-    )
-    marker_match_parser.add_argument(
-        "--output-dir",
-        default="Data/matching",
-        help="Output directory path (default: Data/matching)",
-    )
-    marker_match_parser.add_argument(
-        "--output-prefix", default="matched", help="Output file prefix (default: matched)"
-    )
-    marker_match_parser.add_argument(
-        "--method",
-        choices=["hungarian", "mincostflow", "sinkhorn"],
-        default="hungarian",
-        help="Matching algorithm (default: hungarian, options: hungarian/mincostflow/sinkhorn)",
-    )
-    marker_match_parser.add_argument(
-        "--max-time-diff",
-        type=float,
-        default=3.0,
-        help="Max time difference (seconds) for matching (default: 3.0)",
-    )
-    marker_match_parser.add_argument(
-        "--sigma-time",
-        type=float,
-        default=0.75,
-        help="Time sigma (seconds) for confidence calculation (default: 0.75)",
-    )
-    marker_match_parser.add_argument(
-        "--no-drift-correction", action="store_true", help="Disable drift correction (default: enabled)"
-    )
-    marker_match_parser.add_argument(
-        "--drift-method",
-        choices=["linear", "theilsen"],
-        default="linear",
-        help="Drift correction method (default: linear)",
-    )
-    marker_match_parser.add_argument(
-        "--no-json", action="store_true", help="Do not save JSON metadata file (default: save)"
-    )
-    marker_match_parser.add_argument(
-        "--no-plots", action="store_true", help="Do not generate visualization charts (default: generate)"
-    )
-    marker_match_parser.add_argument(
-        "--overwrite", action="store_true", help="Overwrite existing output files"
-    )
-    marker_match_parser.set_defaults(func=marker_match)
 
     # marker crop subcommand - added to marker subparser
     marker_crop_parser = marker_subparsers.add_parser(
@@ -1753,98 +1567,7 @@ Examples:
     )
     marker_manual_match_parser.set_defaults(func=marker_manual_match)
 
-    # marker traversal-match
-    marker_traversal_parser = marker_subparsers.add_parser(
-        "traversal-match",
-        help="Brute-force shift traversal matching to minimise mean per-marker distance"
-    )
-    input_group_trav = marker_traversal_parser.add_mutually_exclusive_group(required=True)
-    input_group_trav.add_argument(
-        "--info-dir",
-        help="Directory containing subject_*_marker_report.csv (output of `marker info`).  "
-             "Enables stacked-timeline matching: sessions per device are concatenated with "
-             "time offsets, the longest-duration device is the reference (±10 s tolerance), "
-             "and each shorter device is matched via iterative shift refinement."
-    )
-    input_group_trav.add_argument(
-        "--input-dir",
-        help="Directory containing marker CSV files (legacy mode)"
-    )
-    input_group_trav.add_argument(
-        "--input-files",
-        nargs="+",
-        help="Explicit list of marker CSV file paths, supports BIDS wildcards (e.g. *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg) (legacy mode)"
-    )
-    marker_traversal_parser.add_argument(
-        "--device-names",
-        nargs="+",
-        help="Device names matching the order of --input-files (legacy mode)"
-    )
-    marker_traversal_parser.add_argument(
-        "--marker-base-dir",
-        default="Data/marker",
-        help="Marker CSV base directory, used with --info-dir (default: Data/marker)"
-    )
-    marker_traversal_parser.add_argument(
-        "--convert-base-dir",
-        default="Data/convert",
-        help="Converted data base directory, used with --info-dir (default: Data/convert)"
-    )
-    marker_traversal_parser.add_argument(
-        "--output-dir",
-        default="Data/matching",
-        help="Output directory (default: Data/matching)"
-    )
-    marker_traversal_parser.add_argument(
-        "--output-prefix",
-        help="Output file prefix (default: filename or 'traversal_matched')"
-    )
-    marker_traversal_parser.add_argument(
-        "--max-time-diff",
-        type=float,
-        default=10.0,
-        help="Max time difference (s) for a valid match; also sets the ± tolerance "
-             "for the reference duration window (default: 10.0)"
-    )
-    marker_traversal_parser.add_argument(
-        "--gap-penalty",
-        type=float,
-        default=1e6,
-        help="Penalty cost for gaps (default: 1e6)"
-    )
-    marker_traversal_parser.add_argument(
-        "--random-restarts",
-        type=int,
-        default=5,
-        help="Random restarts for robustness (default: 5)"
-    )
-    marker_traversal_parser.add_argument(
-        "--rng-seed",
-        type=int,
-        default=42,
-        help="Random seed (default: 42)"
-    )
-    marker_traversal_parser.add_argument(
-        "--no-json",
-        action="store_true",
-        help="Skip saving metadata JSON"
-    )
-    marker_traversal_parser.add_argument(
-        "--no-csv",
-        action="store_true",
-        help="Skip saving timeline CSV"
-    )
-    marker_traversal_parser.add_argument(
-        "--no-fig",
-        action="store_true",
-        help="Skip saving matched timeline figure (PNG)"
-    )
-    marker_traversal_parser.add_argument(
-        "--no-merge-sessions",
-        action="store_true",
-        help="Disable session merging; treat each file as a separate device (legacy mode, default: merge sessions per device type)"
-    )
-    marker_traversal_parser.set_defaults(func=marker_traversal_match)
+
 
     # marker basematch
     marker_basematch_parser = marker_subparsers.add_parser(
@@ -1852,33 +1575,17 @@ Examples:
         help="Match markers by session-length alignment first, then by markers. "
              "Groups sessions across devices to align start/end times, distributes "
              "duration differences as gaps between sessions, then fine-tunes middle "
-             "sessions with traversal search."
-    )
-    bg = marker_basematch_parser.add_mutually_exclusive_group(required=True)
-    bg.add_argument(
-        "--info-dir",
-        help="Directory containing subject_*_marker_report.csv (output of `marker info`)."
-    )
-    bg.add_argument(
-        "--input-dir",
-        help="Directory containing marker CSV files"
-    )
-    bg.add_argument(
-        "--input-files",
-        nargs="+",
-        help="Explicit list of marker CSV file paths"
+             "sessions with traversal search.  Reads alignment JSONs generated by "
+             "``multichsync marker timeline``."
     )
     marker_basematch_parser.add_argument(
-        "--device-names", nargs="+",
-        help="Device names matching the order of --input-files"
+        "--timeline-dir", required=True,
+        help="Directory containing subject_*_alignment.json files (output of `marker timeline`). "
+             "Per-subject alignment data (filenames, start/end alignment) is read from these JSONs."
     )
     marker_basematch_parser.add_argument(
         "--marker-base-dir", default="Data/marker",
-        help="Marker CSV base directory, used with --info-dir (default: Data/marker)"
-    )
-    marker_basematch_parser.add_argument(
-        "--convert-base-dir", default="Data/convert",
-        help="Converted data base directory, used with --info-dir (default: Data/convert)"
+        help="Marker CSV base directory (default: Data/marker)"
     )
     marker_basematch_parser.add_argument(
         "--output-dir", default="Data/matching",

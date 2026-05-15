@@ -1618,12 +1618,19 @@ def _save_matched_timeline_figure(
     palette = {"fnirs": "#4C72B0", "eeg": "#DD8452", "ecg": "#55A868"}
     colors = [palette.get(d, "#999999") for d in device_names]
 
-    # ── X-axis range: always start from 0 ──────────────────────────────
+    # ── X-axis range: markers + session durations ──────────────────────
     all_times = []
     for d in device_names:
         valid = result.assignments[d][~np.isnan(result.assignments[d])]
         if len(valid) > 0:
             all_times.extend(valid)
+    # Also consider session total durations so session bars aren't clipped
+    for d in device_names:
+        s = stack.get(d)
+        if s:
+            dur = s.get("total_duration", 0) or 0
+            if dur > 0:
+                all_times.append(dur)
     if not all_times:
         all_times = [0.0, 100.0]
     t_max = max(all_times) if all_times else 100.0
@@ -2762,270 +2769,332 @@ def match_baseline(
 
 def match_baseline_cli(args: Any) -> None:
     """CLI entry point for ``multichsync marker basematch``."""
+    import json as json_mod
     from .matcher import load_marker_csv_enhanced
 
-    info_dir = getattr(args, "info_dir", None)
+    timeline_dir = args.timeline_dir
+    timeline_dir_path = Path(timeline_dir)
+    if not timeline_dir_path.exists():
+        raise FileNotFoundError(f"Timeline directory not found: {timeline_dir}")
 
-    if info_dir:
-        # ── Mode A: from info reports ──────────────────────────────────
-        # Reuse the exact same loading + dedup from match_traversal_from_info
-        # by calling it internally; then override the matching algorithm.
-        from .traversal_matcher import match_traversal_from_info as _mtfi
+    json_files = sorted(timeline_dir_path.glob("subject_*_alignment.json"))
+    if not json_files:
+        raise FileNotFoundError(
+            f"No subject_*_alignment.json files found in {timeline_dir}"
+        )
 
-        # We use match_traversal_from_info only for its loading/dedup/save logic.
-        # But since we can't easily replace the algorithm mid-flight, we load
-        # info ourselves and call match_baseline per subject.
-        info_dir_path = Path(info_dir)
-        if not info_dir_path.exists():
-            raise FileNotFoundError(f"Info directory not found: {info_dir}")
+    output_dir = args.output_dir or "Data/matching"
+    output_prefix = args.output_prefix or "basematched"
+    marker_base_dir = args.marker_base_dir or "Data/marker"
+    max_time_diff = args.max_time_diff
+    gap_penalty = args.gap_penalty
+    save_csv = not args.no_csv
+    save_json = not args.no_json
+    save_fig = not args.no_fig
 
-        import pandas as pd
-        from collections import defaultdict
+    results: Dict[str, TraversalMatchResult] = {}
+    total_processed = 0
 
-        report_files = sorted(info_dir_path.glob("subject_*_marker_report.csv"))
-        if not report_files:
-            raise FileNotFoundError(f"No subject_*_marker_report.csv files found in {info_dir}")
+    for jf in json_files:
+        with open(jf, "r", encoding="utf-8") as f:
+            alignment = json_mod.load(f)
 
-        all_rows: List[Dict[str, Any]] = []
-        for rp in report_files:
-            try:
-                df = pd.read_csv(rp, encoding="utf-8-sig")
-                all_rows.extend(df.to_dict(orient="records"))
-                print(f"  Loaded {rp.name}: {len(df)} rows")
-            except Exception as e:
-                print(f"  Warning: skipping {rp.name} ({e})")
+        subject_id = alignment.get("subject_id", "unknown")
+        devices_data = alignment.get("devices", [])
+        if len(devices_data) < 2:
+            print(f"\n  [{subject_id}] Skipped: {len(devices_data)} device(s), need >= 2")
+            continue
 
-        if not all_rows:
-            raise ValueError("No data rows loaded from info reports.")
+        print(f"\n{'='*50}")
+        print(f"Subject {subject_id} (from {jf.name})")
 
-        # ── Dedup (same steps as match_traversal_from_info) ────────────
-        dedup_key = lambda r: (str(r.get("file_name", "")), str(r.get("device", "")), str(r.get("sequence_id", "")))
-        deduped = {}
-        for row in all_rows:
-            k = dedup_key(row)
-            existing = deduped.get(k)
-            if existing is None or int(row.get("n_markers", 0)) > int(existing.get("n_markers", 0)):
-                deduped[k] = row
-        all_rows = list(deduped.values())
+        # Read top-level start/end alignment groups (filename lists)
+        start_groups: List[List[str]] = alignment.get("starttime_align", [])
+        end_groups: List[List[str]] = alignment.get("endtime_align", [])
 
-        # Remove secondary .eeg/.fdt
-        eeg_stems = defaultdict(list)
-        for row in all_rows:
-            fn = str(row.get("file_name", ""))
-            if fn.lower().endswith((".eeg", ".fdt", ".vhdr", ".set")):
-                stem = Path(fn).stem
-                eeg_stems[stem].append(row)
-        filtered = []
-        for row in all_rows:
-            fn = str(row.get("file_name", ""))
-            ext = Path(fn).suffix.lower()
-            if ext in (".eeg", ".fdt"):
-                stem = Path(fn).stem
-                has_header = any(
-                    str(r.get("file_name", "")).lower().endswith((".vhdr", ".set"))
-                    and Path(str(r.get("file_name", ""))).stem == stem
-                    for r in eeg_stems.get(stem, [])
-                )
-                if has_header:
+        # Build filename → start_time lookup from start_groups.
+        # Group 0 starts at 0.0; each subsequent group starts at the
+        # cumulative max session-duration of all previous groups.
+        file_start_time: Dict[str, float] = {}
+        group_start = 0.0
+        for group in start_groups:
+            max_dur = 0.0
+            for fname in group:
+                for dev_info in devices_data:
+                    if fname in dev_info.get("filenames", []):
+                        idx = dev_info["filenames"].index(fname)
+                        dur = float(dev_info["durations"][idx]) if idx < len(dev_info["durations"]) else 0.0
+                        max_dur = max(max_dur, dur)
+                        break
+            for fname in group:
+                file_start_time[fname] = group_start
+            group_start += max_dur
+
+        # Build filename → target end time from end_groups.
+        # Within each group, all files are stretched so they end at the
+        # same time (the max natural end time of files in that group).
+        file_target_end: Dict[str, float] = {}
+        for group in end_groups:
+            max_end = 0.0
+            for fname in group:
+                sa = file_start_time.get(fname, 0.0)
+                for dev_info in devices_data:
+                    if fname in dev_info.get("filenames", []):
+                        idx = dev_info["filenames"].index(fname)
+                        dur = float(dev_info["durations"][idx]) if idx < len(dev_info["durations"]) else 0.0
+                        natural_end = sa + dur
+                        max_end = max(max_end, natural_end)
+                        break
+            for fname in group:
+                if fname not in file_target_end or max_end > file_target_end[fname]:
+                    file_target_end[fname] = max_end
+
+        # Build session_dict from alignment JSON
+        session_dict: Dict[str, List[Dict[str, Any]]] = {}
+        valid_devices = []
+
+        for dev_info in devices_data:
+            device = dev_info["device"]
+            filenames = dev_info.get("filenames", [])
+            durations = dev_info.get("durations", [])
+            n_markers_list = dev_info.get("n_markers", [])
+            seq_ids = dev_info.get("sequence_ids", [])
+
+            if not filenames:
+                continue
+
+            # Find marker CSV files for each data filename
+            sessions = []
+            all_raw_markers: List[np.ndarray] = []
+
+            for fi, fname in enumerate(filenames):
+                # Skip files not in needmatch (user may have trimmed the list)
+                if needmatch_set and fname not in needmatch_set:
                     continue
-            filtered.append(row)
-        n_sec = len(all_rows) - len(filtered)
-        if n_sec:
-            print(f"  Removed {n_sec} secondary EEG binary file(s)")
-        all_rows = filtered
+                marker_path = _find_marker_csv(fname, device, marker_base_dir)
+                dur = float(durations[fi]) if fi < len(durations) else 0.0
+                nm = int(n_markers_list[fi]) if fi < len(n_markers_list) else 0
+                sid = str(seq_ids[fi]) if fi < len(seq_ids) else f"{fi+1:02d}"
+                sa = file_start_time.get(fname, 0.0)
 
-        # Per-subject dedup of identical (device, seq_id)
-        subj_groups = defaultdict(list)
-        for row in all_rows:
-            subj_groups[str(row.get("subject_id", "unknown"))].append(row)
-        final_rows = []
-        for sid, srows in subj_groups.items():
-            seen_local = {}
-            for row in srows:
-                key = (str(row.get("device", "")), str(row.get("sequence_id", "")))
-                nm = int(row.get("n_markers", 0))
-                dr = row.get("sequence_duration", "")
-                try:
-                    dur = float(dr) if dr not in (None, "", "nan", "NaN") else -1.0
-                except:
-                    dur = -1.0
-                existing = seen_local.get(key)
-                if existing is not None:
-                    enm = int(existing.get("n_markers", 0))
-                    edr = existing.get("sequence_duration", "")
-                    try:
-                        edur = float(edr) if edr not in (None, "", "nan", "NaN") else -1.0
-                    except:
-                        edur = -1.0
-                    if nm == enm and abs(dur - edur) < 1.0:
-                        continue
-                seen_local[key] = row
-                final_rows.append(row)
-        n_sid = len(all_rows) - len(final_rows)
-        if n_sid:
-            print(f"  Removed {n_sid} duplicate session(s) (same device+seq_id)")
-        all_rows = final_rows
+                if marker_path is not None:
+                    dev = load_marker_csv_enhanced(marker_path)
+                    raw_markers = dev.timestamps_raw
+                else:
+                    raw_markers = np.array([], dtype=float)
+                    if nm > 0:
+                        print(f"    WARNING: [{device}] marker file for {fname} not found in {marker_base_dir}/{device}/")
 
-        # Group by subject_id
-        subject_groups = defaultdict(list)
-        for row in all_rows:
-            subject_groups[str(row.get("subject_id", "unknown"))].append(row)
+                sessions.append({
+                    "file_name": fname,
+                    "sequence_id": sid,
+                    "n_markers": nm,
+                    "duration": dur,
+                    "raw_markers": raw_markers.copy(),
+                    "starttime_align": sa,
+                })
+                all_raw_markers.append(raw_markers)
 
-        print(f"\nFound {len(subject_groups)} subject(s) to process")
-        output_dir = args.output_dir or "Data/matching"
-        output_prefix = args.output_prefix or "basematched"
-        marker_base_dir = getattr(args, "marker_base_dir", "Data/marker")
-        max_time_diff = args.max_time_diff
-        gap_penalty = args.gap_penalty
-        save_csv = not args.no_csv
-        save_json = not args.no_json
-        save_fig = not args.no_fig
-
-        results: Dict[str, TraversalMatchResult] = {}
-        total_processed = 0
-
-        for subject_id in sorted(subject_groups):
-            rows = subject_groups[subject_id]
-            print(f"\n{'='*50}")
-            print(f"Subject {subject_id}")
-
-            # Build stacked timelines
-            try:
-                stack = _build_stacked_timelines_from_info(rows, marker_base_dir)
-            except ValueError as e:
-                print(f"  Skipped: {e}")
+            if not sessions:
                 continue
 
-            if len(stack) < 2:
-                print(f"  Skipped: {len(stack)} device(s) after stacking, need >= 2")
-                continue
+            session_dict[device] = sessions
+            valid_devices.append(device)
 
-            # Extract marker_dict and session_dict from stack
-            # Filter devices with valid duration
-            valid_devices = []
-            for dn, info in stack.items():
-                dur = info["total_duration"]
-                if not np.isfinite(dur) or dur <= 0:
-                    print(f"  Skipping device '{dn}': invalid duration={dur}")
-                    continue
-                valid_devices.append(dn)
+            dur_total = sum(s["duration"] for s in sessions)
+            nm_total = sum(s["n_markers"] for s in sessions)
+            align_str = ", ".join(
+                f"{s['starttime_align']:.0f}s"
+                for s in sessions
+            )
+            print(f"  [{device}] {nm_total} markers, {dur_total:.1f}s, "
+                  f"{len(sessions)} session(s), "
+                  f"start=[{align_str}]")
 
-            if len(valid_devices) < 2:
-                continue
+        if len(valid_devices) < 2:
+            print(f"  Skipped: {len(valid_devices)} valid device(s), need >= 2")
+            continue
 
-            marker_dict = {}
-            session_dict = {}
+        needmatch_set: set = set(alignment.get("needmatch", []))
+
+        # ── Branch: basematch algorithm or alignment-group enforcement ──
+        if not start_groups:
+            # ── No alignment groups → run full basematch algorithm ──
+            marker_dict: Dict[str, np.ndarray] = {}
             for dn in valid_devices:
-                # Use RAW (un-offset) markers — stacking will be done by
-                # _reposition_by_groups using session duration offsets.
-                raw_markers = np.concatenate(
-                    [s["raw_markers"] for s in stack[dn]["sessions"]]
-                ) if stack[dn]["n_markers_total"] > 0 else np.array([], dtype=float)
-                marker_dict[dn] = raw_markers
-                session_dict[dn] = stack[dn]["sessions"]
-                print(f"  [{dn}] {stack[dn]['n_markers_total']} markers, "
-                      f"{stack[dn]['total_duration']:.1f}s, "
-                      f"{len(stack[dn]['sessions'])} session(s)")
+                parts = [s["raw_markers"] for s in session_dict[dn] if len(s["raw_markers"]) > 0]
+                marker_dict[dn] = np.concatenate(parts) if parts else np.array([], dtype=float)
 
-            # Run baseline matching
+            session_simple: Dict[str, List[Dict[str, Any]]] = {}
+            for dn in valid_devices:
+                session_simple[dn] = [{"duration": s["duration"], "n_markers": s["n_markers"]} for s in session_dict[dn]]
+
+            print(f"  Running full basematch ({len(valid_devices)} devices, {len(needmatch_set)} files in needmatch)")
             try:
                 result = match_baseline(
-                    marker_dict,
-                    session_dict,
+                    marker_dict, session_simple,
                     max_time_diff=max_time_diff,
                     gap_penalty=gap_penalty,
                 )
             except ValueError as e:
                 print(f"  Skipped: {e}")
                 continue
-
             if result is None:
                 continue
 
-            # Save outputs
-            prefix = f"{output_prefix}_subject-{subject_id}"
-            os.makedirs(output_dir, exist_ok=True)
+            # Build stack_out for saving
+            stack_out: Dict[str, Dict[str, Any]] = {}
+            for dn in result.device_names:
+                s = session_dict.get(dn, [])
+                total_dur = sum(ss["duration"] for ss in s)
+                total_nm = sum(ss["n_markers"] for ss in s)
+                stack_out[dn] = {
+                    "total_duration": total_dur,
+                    "n_markers_total": total_nm,
+                    "stacked_markers": marker_dict.get(dn, np.array([], dtype=float)),
+                    "sessions": s,
+                }
+        else:
+            # ── Alignment groups provided → enforce both start and end ──
+            aligned_marker_dict: Dict[str, np.ndarray] = {}
+            for dn in valid_devices:
+                sessions = session_dict[dn]
+                aligned_parts = []
+                for s in sessions:
+                    offset = s.get("starttime_align", 0.0)
+                    dur = s["duration"]
+                    fname = s.get("file_name", "")
+                    target_end = file_target_end.get(fname, offset + dur)
 
-            if save_csv:
-                _save_timeline_csv(result, output_dir, prefix)
-                _save_stacked_timeline_csv(result, stack, output_dir, prefix)
-            if save_json:
-                _save_metadata_json(result, output_dir, prefix)
-            if save_fig:
-                try:
-                    _save_matched_timeline_figure(result, stack, subject_id, output_dir, prefix)
-                except Exception as e:
-                    print(f"  Warning: figure failed ({e})")
+                    if dur > 0 and target_end > offset:
+                        stretch = (target_end - offset) / dur
+                        aligned = offset + (s["raw_markers"] * stretch)
+                    else:
+                        aligned = s["raw_markers"] + offset
+                    aligned_parts.append(aligned)
 
-            results[subject_id] = result
-            total_processed += 1
+                if aligned_parts:
+                    concat = np.concatenate(aligned_parts)
+                    concat.sort()
+                    aligned_marker_dict[dn] = concat
+                else:
+                    aligned_marker_dict[dn] = np.array([], dtype=float)
 
-        print(f"\n{'='*50}")
-        print(f"Base matching complete: {total_processed} subject(s)")
-        print(f"{'='*50}")
-        for sid, res in sorted(results.items()):
-            print(f"  {sid}: ref={res.anchor_name}, devices={res.device_names}, "
-                  f"matched={res.n_matched_groups}/{res.n_groups}, mean={res.mean_distance:.3f}s")
-        print(f"{'='*50}\n")
-        return
+            # Reference = device with most markers
+            ref_name = max(valid_devices, key=lambda dn: len(aligned_marker_dict[dn]))
+            device_names = [ref_name] + [dn for dn in valid_devices if dn != ref_name]
+            t_ref = aligned_marker_dict[ref_name]
+            n_ref = len(t_ref)
+            print(f"  Ref device: {ref_name} ({n_ref} markers)")
 
-    # ── Mode B: from files (legacy style) ──────────────────────────────
-    file_paths: List[str] = []
-    device_names: Optional[List[str]] = None
+            # Greedy nearest-neighbour matching on the pre-aligned timeline
+            assignments: Dict[str, np.ndarray] = {ref_name: t_ref.copy()}
+            group_indices: Dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
+            shift_history: Dict[str, List[Tuple[int, float]]] = {}
 
-    if args.input_dir:
-        input_dir = Path(args.input_dir)
-        if not input_dir.exists():
-            raise FileNotFoundError(f"Input directory not found: {input_dir}")
-        csv_files = sorted(input_dir.glob("*.csv"))
-        if len(csv_files) < 2:
-            raise ValueError(f"Need ≥2 CSV files, found {len(csv_files)} in {input_dir}")
-        file_paths = [str(f) for f in csv_files]
-    elif args.input_files:
-        file_paths = list(args.input_files)
-    else:
-        raise ValueError("Provide --info-dir or --input-dir or --input-files")
+            for other_name in device_names[1:]:
+                t_other = aligned_marker_dict[other_name]
+                n_other = len(t_other)
+                if n_other == 0:
+                    assignments[other_name] = np.full(n_ref, np.nan)
+                    group_indices[other_name] = np.full(n_ref, -1, dtype=int)
+                    shift_history[other_name] = [(0, gap_penalty)]
+                    print(f"  [{other_name}] 0 markers, all gaps")
+                    continue
 
-    if args.device_names:
-        device_names = args.device_names
+                sort_idx = np.argsort(t_other)
+                sorted_other = t_other[sort_idx]
+                used = np.zeros(n_other, dtype=bool)
+                dev_assign = np.full(n_ref, np.nan)
+                dev_idx = np.full(n_ref, -1, dtype=int)
+                n_matched = 0
 
-    devices = []
-    for i, path in enumerate(file_paths):
-        name = device_names[i] if (device_names and i < len(device_names)) else None
-        dev = load_marker_csv_enhanced(path, name)
-        devices.append(dev)
+                for i in range(n_ref):
+                    rt = t_ref[i]
+                    pos = np.searchsorted(sorted_other, rt)
+                    candidates = [(p, abs(sorted_other[p] - rt)) for off in (-1, 0, 1)
+                                  if 0 <= (p := pos + off) < n_other and not used[p]]
+                    if candidates:
+                        bp, bd = min(candidates, key=lambda x: x[1])
+                        if bd <= max_time_diff:
+                            dev_assign[i] = sorted_other[bp]
+                            dev_idx[i] = int(sort_idx[bp])
+                            used[bp] = True
+                            n_matched += 1
 
-    marker_dict = {}
-    session_dict = {}
-    for dev in devices:
-        marker_dict[dev.name] = dev.timestamps_raw
-        session_dict[dev.name] = [{"duration": float(dev.timestamps_raw[-1] - dev.timestamps_raw[0])
-                                    if len(dev.timestamps_raw) > 1 else 1.0,
-                                    "n_markers": len(dev.timestamps_raw)}]
+                assignments[other_name] = dev_assign
+                group_indices[other_name] = dev_idx
+                shift_history[other_name] = [(0, 0.0)]
+                print(f"  [{other_name}] matched {n_matched}/{n_ref} (via JSON alignment)")
 
-    result = match_baseline(
-        marker_dict, session_dict,
-        max_time_diff=args.max_time_diff,
-        gap_penalty=args.gap_penalty,
-    )
+            # Per-group distances
+            per_marker_distances = np.full(n_ref, np.nan)
+            for g in range(n_ref):
+                times = [assignments[d][g] for d in device_names if not np.isnan(assignments[d][g])]
+                if len(times) >= 2:
+                    diffs = [abs(times[i] - times[j]) for i in range(len(times)) for j in range(i + 1, len(times))]
+                    per_marker_distances[g] = float(np.mean(diffs))
 
-    output_dir = args.output_dir or "Data/matching"
-    prefix = args.output_prefix or "basematched"
-    os.makedirs(output_dir, exist_ok=True)
-    if not args.no_csv:
-        _save_timeline_csv(result, output_dir, prefix)
-    if not args.no_json:
-        _save_metadata_json(result, output_dir, prefix)
+            valid_dist_mask = ~np.isnan(per_marker_distances)
+            total_distance = float(np.sum(per_marker_distances[valid_dist_mask]))
+            mean_distance = float(np.mean(per_marker_distances[valid_dist_mask])) if valid_dist_mask.any() else 0.0
+            n_matched_groups = int(valid_dist_mask.sum())
 
+            gaps: Dict[str, List[int]] = {}
+            for d in device_names:
+                gs = np.where(group_indices[d] == -1)[0].tolist()
+                if gs:
+                    gaps[d] = gs
+
+            result = TraversalMatchResult(
+                anchor_name=ref_name,
+                device_names=device_names,
+                assignments=assignments,
+                group_indices=group_indices,
+                per_marker_distances=per_marker_distances,
+                total_distance=total_distance,
+                mean_distance=mean_distance,
+                n_groups=n_ref,
+                n_matched_groups=n_matched_groups,
+                gaps=gaps,
+                shift_history=shift_history,
+            )
+
+            # Build stack_out for saving
+            stack_out = {}
+            for dn in device_names:
+                s = session_dict.get(dn, [])
+                total_dur = sum(ss["duration"] for ss in s)
+                total_nm = sum(ss["n_markers"] for ss in s)
+                stack_out[dn] = {
+                    "total_duration": total_dur,
+                    "n_markers_total": total_nm,
+                    "stacked_markers": aligned_marker_dict.get(dn, np.array([], dtype=float)),
+                    "sessions": s,
+                }
+
+        # ── Common save outputs ─────────────────────────────────────────
+        prefix = f"{output_prefix}_subject-{subject_id}"
+        os.makedirs(output_dir, exist_ok=True)
+        if save_csv:
+            _save_timeline_csv(result, output_dir, prefix)
+            _save_stacked_timeline_csv(result, stack_out, output_dir, prefix)
+        if save_json:
+            _save_metadata_json(result, output_dir, prefix)
+        if save_fig:
+            try:
+                _save_matched_timeline_figure(result, stack_out, subject_id, output_dir, prefix)
+            except Exception as e:
+                print(f"  Warning: figure failed ({e})")
+
+        results[subject_id] = result
+        total_processed += 1
+
+    mode_str = f"aligned via JSON" if start_groups else "basematch (no alignment groups)"
     print(f"\n{'='*50}")
-    print(f"Base matching complete")
+    print(f"Base matching complete ({total_processed} subject(s), {mode_str})")
     print(f"{'='*50}")
-    print(f"  Anchor:            {result.anchor_name}")
-    print(f"  Devices:           {', '.join(result.device_names)}")
-    print(f"  Consensus groups:  {result.n_groups}")
-    print(f"  Matched groups:    {result.n_matched_groups}")
-    print(f"  Mean distance:     {result.mean_distance:.4f} s")
-    if result.gaps:
-        for dev, grps in result.gaps.items():
-            print(f"  Gaps in {dev}:      {len(grps)}")
+    for sid, res in sorted(results.items()):
+        print(f"  {sid}: ref={res.anchor_name}, devices={res.device_names}, "
+              f"matched={res.n_matched_groups}/{res.n_groups}, mean={res.mean_distance:.3f}s")
     print(f"{'='*50}\n")

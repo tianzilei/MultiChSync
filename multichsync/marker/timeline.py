@@ -1,12 +1,15 @@
 """
-Timeline visualization module for MultiChSync.
+Timeline visualization and alignment module for MultiChSync.
 
 Generates per-subject multi-device timeline figures from marker info reports,
 showing recording durations and marker counts across devices (fNIRS, EEG, ECG).
+
+Also generates per-subject alignment JSON files consumed by ``marker basematch``.
 """
 
+import json
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -256,147 +259,81 @@ def _build_stacked_figure(
     return fig
 
 
-def _build_combined_figure(
+def _build_alignment_json(
     df: pd.DataFrame,
     devices_in_data: List[str],
     subject_id: str,
-    dpi: int,
-    figsize: Optional[tuple],
-) -> plt.Figure:
+) -> Dict[str, Any]:
     """
-    Build a combined multi-device figure with one subplot row per device.
+    Build alignment data for a subject, suitable for ``marker basematch``.
+
+    ``starttime_align`` and ``endtime_align`` start as empty arrays —
+    the user manually edits these to define filename groups that should
+    start (or end) at the same time.  ``needmatch`` is a flat list of
+    **all** filenames that basematch should process, and is the default
+    set used when ``starttime_align`` is still empty.
+
+    Per-device fields (``filenames``, ``durations``, ``n_markers``) are
+    provided for basematch to look up individual session properties.
 
     Args:
-        df: DataFrame with columns [device, _seq_num, sequence_duration, n_markers].
+        df: DataFrame with columns [device, file_name, sequence_id,
+            n_markers, sequence_duration].
         devices_in_data: Ordered list of device names present in df.
-        subject_id: Subject label for title.
-        dpi: Figure resolution.
-        figsize: Optional (width, height). Auto-computed if None.
+        subject_id: Subject identifier.
 
     Returns:
-        Matplotlib Figure.
+        Dictionary with keys ``subject_id``, ``starttime_align``,
+        ``endtime_align``, ``needmatch``, and ``devices``.
     """
-    unique_seqs = sorted(df["_seq_num"].unique())
-    seq_labels = {s: f"S{s:.0f}" for s in unique_seqs}
-    n_devices = len(devices_in_data)
+    devices_list = []
+    all_file_names: List[str] = []
 
-    # Figure size
-    if figsize is None:
-        w = max(10, min(20, 2.0 * len(unique_seqs) + 6))
-        h = max(3.0, 2.5 * n_devices + 1.5)
-    else:
-        w, h = figsize
+    for device in devices_in_data:
+        dev_df = df[df["device"] == device].copy()
+        dev_df = dev_df.sort_values(by="file_name", ascending=True)
 
-    fig, axes = plt.subplots(
-        n_devices, 1,
-        figsize=(w, h),
-        sharex=True,
-        squeeze=False,
-    )
+        sessions = []
+        for _, row in dev_df.iterrows():
+            fname = str(row["file_name"])
+            dur = float(row["sequence_duration"]) if pd.notna(row["sequence_duration"]) and row["sequence_duration"] != "" else 0.0
+            sessions.append({
+                "file_name": fname,
+                "sequence_id": str(row["sequence_id"]),
+                "n_markers": int(row["n_markers"]),
+                "duration": dur,
+            })
+            all_file_names.append(fname)
 
-    # Global x-axis limit
-    max_duration = df["sequence_duration"].dropna().max()
-    if pd.isna(max_duration) or max_duration <= 0:
-        max_duration = 100
-    x_limit = max_duration * 1.05
+        devices_list.append({
+            "device": device,
+            "filenames": [s["file_name"] for s in sessions],
+            "sequence_ids": [s["sequence_id"] for s in sessions],
+            "n_markers": [s["n_markers"] for s in sessions],
+            "durations": [s["duration"] for s in sessions],
+        })
 
-    legend_patches = []
+    # Single example cell so users see the expected format when they
+    # open the JSON for manual editing.
+    example_start: List[List[str]] = []
+    example_end: List[List[str]] = []
+    if all_file_names:
+        first_files = [d["filenames"][0] for d in devices_list if d["filenames"]]
+        if first_files:
+            example_start.append(first_files)
+        last_files = [d["filenames"][-1] for d in devices_list if d["filenames"]]
+        if last_files:
+            example_end.append(last_files)
 
-    for idx, device in enumerate(devices_in_data):
-        ax = axes[idx][0]
-        dev_df = df[df["device"] == device]
-        dev_color = DEVICE_CONFIG[device]["color"]
-        dev_label = DEVICE_CONFIG[device]["label"]
-
-        y_positions = []
-        y_labels = []
-        bar_height = 0.6
-
-        for j, (_, row) in enumerate(dev_df.iterrows()):
-            y = j
-            duration = row["sequence_duration"]
-            n_markers = int(row["n_markers"])
-            seq_num = int(row["_seq_num"])
-
-            y_positions.append(y)
-            y_labels.append(seq_labels.get(seq_num, str(seq_num)))
-
-            has_markers = n_markers > 0
-
-            if pd.notna(duration) and duration > 0:
-                ax.barh(
-                    y,
-                    duration,
-                    height=bar_height,
-                    left=0,
-                    color=dev_color,
-                    alpha=0.85 if has_markers else 0.25,
-                    edgecolor=dev_color,
-                    linewidth=0.5,
-                )
-
-                if has_markers:
-                    ax.text(
-                        duration + x_limit * 0.01,
-                        y,
-                        f"N={n_markers}",
-                        va="center",
-                        fontsize=7,
-                        color="black",
-                    )
-                else:
-                    ax.text(
-                        duration + x_limit * 0.01,
-                        y,
-                        "no markers",
-                        va="center",
-                        fontsize=6,
-                        color="gray",
-                        style="italic",
-                    )
-            else:
-                ax.text(
-                    x_limit * 0.02,
-                    y,
-                    "no duration info" if n_markers == 0 else f"N={n_markers}",
-                    va="center",
-                    fontsize=6,
-                    color="gray",
-                    style="italic",
-                )
-
-        ax.set_xlim(0, x_limit)
-        ax.set_ylim(-0.5, len(dev_df) - 0.5)
-        ax.set_ylabel(dev_label, fontsize=10, fontweight="bold")
-        ax.set_yticks(y_positions if y_positions else [])
-        ax.set_yticklabels(y_labels if y_labels else [], fontsize=8)
-        ax.grid(axis="x", alpha=0.3, linestyle="--")
-        ax.tick_params(axis="y", length=0)
-
-        legend_patches.append(
-            mpatches.Patch(color=dev_color, alpha=0.85, label=dev_label)
-        )
-
-    axes[-1][0].set_xlabel("Time (seconds)", fontsize=10)
-
-    fig.suptitle(
-        f"Subject {subject_id} — Marker Timeline Overview",
-        fontsize=13,
-        fontweight="bold",
-        y=0.98,
-    )
-
-    fig.legend(
-        handles=legend_patches,
-        loc="lower center",
-        ncol=n_devices,
-        frameon=True,
-        fontsize=9,
-        bbox_to_anchor=(0.5, -0.02),
-    )
-
-    plt.tight_layout(rect=[0, 0.06, 1, 0.94])
-    return fig
+    return {
+        "subject_id": subject_id,
+        "_example_starttime_align": example_start,
+        "_example_endtime_align": example_end,
+        "starttime_align": [],
+        "endtime_align": [],
+        "needmatch": all_file_names,
+        "devices": devices_list,
+    }
 
 
 def generate_timeline_figures(
@@ -404,32 +341,28 @@ def generate_timeline_figures(
     output_dir: Union[str, Path] = "Data/marker/timeline",
     dpi: int = 150,
     figsize: Optional[tuple] = None,
-    stack: bool = False,
-) -> Dict[str, Path]:
+) -> Dict[str, Dict[str, Path]]:
     """
-    Generate multi-device timeline figures from marker info report CSVs.
+    Generate multi-device timeline figures **and alignment JSONs** from marker
+    info report CSVs.
 
     Reads all ``subject_*_marker_report.csv`` files from *input_dir*.
 
-    When *stack* is ``False`` (default): produces one combined figure per subject
-    with one horizontal track per device (fNIRS, EEG, ECG) showing recording
-    duration bars and marker counts, sorted by session/sequence number.
-
-    When *stack* is ``True``: produces one figure per subject where each device
-    has a **single segmented timeline bar** — sessions are stacked end-to-end
-    in file name ascending order, with each session shown as a colored segment.
+    Produces:
+    - One PNG figure per subject (stacked segmented timeline per device).
+    - One JSON file per subject with alignment data consumed by
+      ``multichsync marker basematch --timeline-dir``.
 
     Args:
         input_dir: Directory containing subject_*_marker_report.csv files.
-        output_dir: Directory where timeline figures will be saved.
+        output_dir: Directory where timeline figures and alignment JSONs
+            will be saved.
         dpi: Figure resolution (default: 150).
         figsize: Optional (width, height) in inches. If None, computed
             automatically from data.
-        stack: If True, each device shows one segmented timeline bar with
-            sessions stacked end-to-end, sorted by file_name ascending.
 
     Returns:
-        Dictionary mapping subject_id to saved figure path.
+        Dictionary mapping subject_id to ``{"figure": Path, "alignment_json": Path}``.
 
     Raises:
         FileNotFoundError: If no report CSV files are found in input_dir.
@@ -445,7 +378,7 @@ def generate_timeline_figures(
             f"No subject_*_marker_report.csv files found in {input_dir}"
         )
 
-    saved_paths: Dict[str, Path] = {}
+    saved: Dict[str, Dict[str, Path]] = {}
 
     for csv_path in csv_files:
         subject_id = _parse_subject_id(csv_path)
@@ -486,45 +419,36 @@ def generate_timeline_figures(
             d for d in DEVICE_CONFIG.keys() if d in df["device"].values
         ]
 
-        if stack:
-            # --- Stack mode: one segmented bar per device, sessions end-to-end ---
-            fig = _build_stacked_figure(
-                df=df,
-                devices_in_data=devices_in_data,
-                subject_id=subject_id,
-                dpi=dpi,
-                figsize=figsize,
-            )
+        # ── Generate figure ────────────────────────────────────────────
+        fig = _build_stacked_figure(
+            df=df,
+            devices_in_data=devices_in_data,
+            subject_id=subject_id,
+            dpi=dpi,
+            figsize=figsize,
+        )
+        png_path = output_dir / f"subject_{subject_id}_timeline.png"
+        fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  [ok]   {csv_path.name} -> {png_path.name}")
 
-            out_path = output_dir / f"subject_{subject_id}_timeline_stacked.png"
-            fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-            plt.close(fig)
+        # ── Generate alignment JSON ────────────────────────────────────
+        alignment = _build_alignment_json(df, devices_in_data, subject_id)
+        json_path = output_dir / f"subject_{subject_id}_alignment.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(alignment, f, indent=2, default=str)
+        print(f"  [ok]   alignment -> {json_path.name}")
 
-            saved_paths[subject_id] = out_path
-            print(f"  [ok]   {csv_path.name} -> {out_path.name}")
-        else:
-            # --- Combined mode: one figure with subplots per device ---
-            fig = _build_combined_figure(
-                df=df,
-                devices_in_data=devices_in_data,
-                subject_id=subject_id,
-                dpi=dpi,
-                figsize=figsize,
-            )
+        saved[subject_id] = {
+            "figure": png_path,
+            "alignment_json": json_path,
+        }
 
-            out_path = output_dir / f"subject_{subject_id}_timeline.png"
-            fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-            plt.close(fig)
-
-            saved_paths[subject_id] = out_path
-            print(f"  [ok]   {csv_path.name} -> {out_path.name}")
-
-    if not saved_paths:
+    if not saved:
         raise RuntimeError("No timeline figures were generated successfully.")
 
-    # Print summary
-    mode = "stacked (segmented)" if stack else "combined"
-    print(f"\nTimeline figures generated: {len(saved_paths)} ({mode})")
+    print(f"\nTimeline figures generated: {len(saved)}")
+    print(f"Alignment JSONs generated: {len(saved)}")
     print(f"Output directory: {output_dir.resolve()}")
 
-    return saved_paths
+    return saved
