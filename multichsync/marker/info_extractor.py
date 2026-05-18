@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
-from typing import Union, Optional, List, Dict, Tuple
+from typing import Any, Union, Optional, List, Dict, Tuple
 import logging
 
 # =========================================================
@@ -1010,7 +1010,8 @@ def extract_marker_info(
     input_dir: Union[str, Path] = "Data/marker",
     output_dir: Union[str, Path] = "Data/marker/info",
     recursive: bool = True,
-) -> Dict[str, Path]:
+    skip_csv: bool = False,
+) -> Dict[str, Any]:
     """
     Extract metadata and statistics from marker CSV files and generate reports.
     
@@ -1135,8 +1136,8 @@ def extract_marker_info(
     # Step 5: Process unmatched marker files (backward compatibility)
     # -----------------------------------------------------
     for csv_path in csv_files:
-        # Skip files in 'info' directories (report files from previous runs)
-        if "info" in csv_path.parts:
+        # Skip files in 'info' or 'basematch' directories (reports from other commands)
+        if any(p in {"info", "basematch", "matching"} for p in csv_path.parts):
             continue
             
         # Skip marker files that were already matched to data files
@@ -1208,6 +1209,7 @@ def extract_marker_info(
     # Save one individual report per subject
     # -----------------------------------------------------
     subject_reports = {}
+    subject_dataframes: Dict[str, pd.DataFrame] = {}
 
     for subj, g_subj in per_file_df.groupby("subject_id", dropna=False):
         subj_name = str(subj) if pd.notna(subj) else "UNKNOWN"
@@ -1216,11 +1218,14 @@ def extract_marker_info(
             by=["device", "sequence_id", "file_name"], na_position="last"
         )
 
-        # Save subject report directly to output directory
-        report_path = output_dir / f"subject_{subj_name}_marker_report.csv"
-        g_subj.to_csv(report_path, index=False, encoding="utf-8-sig")
+        # Build in-memory DataFrame for downstream use (always)
+        subject_dataframes[subj_name] = g_subj
 
-        subject_reports[subj_name] = report_path
+        # Save subject report CSV only when skip_csv is False
+        if not skip_csv:
+            report_path = output_dir / f"subject_{subj_name}_marker_report.csv"
+            g_subj.to_csv(report_path, index=False, encoding="utf-8-sig")
+            subject_reports[subj_name] = report_path
 
     print("=" * 60)
     print("Marker information extraction completed")
@@ -1240,6 +1245,7 @@ def extract_marker_info(
     return {
         "error_report": error_path,
         "subject_reports": subject_reports,
+        "subject_dataframes": subject_dataframes,
     }
 
 

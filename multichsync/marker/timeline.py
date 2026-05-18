@@ -11,11 +11,13 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from .matcher import load_marker_csv_enhanced
+from .traversal_matcher import _find_marker_csv
 
 # Default device display order and colors
 DEVICE_CONFIG = {
@@ -341,12 +343,14 @@ def generate_timeline_figures(
     output_dir: Union[str, Path] = "Data/marker/timeline",
     dpi: int = 150,
     figsize: Optional[tuple] = None,
+    subject_data: Optional[Dict[str, pd.DataFrame]] = None,
 ) -> Dict[str, Dict[str, Path]]:
     """
     Generate multi-device timeline figures **and alignment JSONs** from marker
     info report CSVs.
 
-    Reads all ``subject_*_marker_report.csv`` files from *input_dir*.
+    Reads ``subject_*_marker_report.csv`` files from *input_dir*, or uses
+    pre-computed *subject_data* DataFrames if provided.
 
     Produces:
     - One PNG figure per subject (stacked segmented timeline per device).
@@ -354,12 +358,15 @@ def generate_timeline_figures(
       ``multichsync marker basematch --timeline-dir``.
 
     Args:
-        input_dir: Directory containing subject_*_marker_report.csv files.
+        input_dir: Directory containing subject_*_marker_report.csv files
+            (ignored when *subject_data* is provided).
         output_dir: Directory where timeline figures and alignment JSONs
             will be saved.
         dpi: Figure resolution (default: 150).
         figsize: Optional (width, height) in inches. If None, computed
             automatically from data.
+        subject_data: Optional dict of subject_id -> DataFrame, bypassing
+            CSV file reading.  When provided, *input_dir* is not scanned.
 
     Returns:
         Dictionary mapping subject_id to ``{"figure": Path, "alignment_json": Path}``.
@@ -371,36 +378,41 @@ def generate_timeline_figures(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Collect all subject report CSVs
-    csv_files = sorted(input_dir.glob("subject_*_marker_report.csv"))
-    if not csv_files:
-        raise FileNotFoundError(
-            f"No subject_*_marker_report.csv files found in {input_dir}"
-        )
-
     saved: Dict[str, Dict[str, Path]] = {}
 
-    for csv_path in csv_files:
-        subject_id = _parse_subject_id(csv_path)
+    # Determine data source: pre-computed DataFrames > CSV files
+    if subject_data:
+        items = sorted(subject_data.items())
+    else:
+        csv_files = sorted(input_dir.glob("subject_*_marker_report.csv"))
+        if not csv_files:
+            raise FileNotFoundError(
+                f"No subject_*_marker_report.csv files found in {input_dir}"
+            )
+        items = []
+        for csv_path in csv_files:
+            subject_id = _parse_subject_id(csv_path)
+            try:
+                df = pd.read_csv(csv_path, encoding="utf-8-sig")
+            except Exception as e:
+                print(f"  [skip] {csv_path.name}: failed to read ({e})")
+                continue
+            items.append((subject_id, df))
 
-        try:
-            df = pd.read_csv(csv_path, encoding="utf-8-sig")
-        except Exception as e:
-            print(f"  [skip] {csv_path.name}: failed to read ({e})")
-            continue
+    for subject_id, df in items:
 
         # Validate required columns
         required_cols = {"device", "sequence_id", "n_markers", "sequence_duration"}
         if not required_cols.issubset(df.columns):
             missing = required_cols - set(df.columns)
-            print(f"  [skip] {csv_path.name}: missing columns {missing}")
+            print(f"  [skip] {subject_id}: missing columns {missing}")
             continue
 
         # Filter to known devices
         known_devices = set(DEVICE_CONFIG.keys())
         df = df[df["device"].isin(known_devices)].copy()
         if df.empty:
-            print(f"  [skip] {csv_path.name}: no known devices found")
+            print(f"  [skip] {subject_id}: no known devices found")
             continue
 
         # Deduplicate
@@ -430,10 +442,30 @@ def generate_timeline_figures(
         png_path = output_dir / f"subject_{subject_id}_timeline.png"
         fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
-        print(f"  [ok]   {csv_path.name} -> {png_path.name}")
+        print(f"  [ok]   subject_{subject_id}_marker_report.csv -> {png_path.name}")
 
         # ── Generate alignment JSON ────────────────────────────────────
         alignment = _build_alignment_json(df, devices_in_data, subject_id)
+
+        # Embed raw marker timestamps so basematch can read them directly
+        # from JSON instead of locating separate marker CSV files.
+        marker_base = input_dir.parent  # e.g. Data/marker (parent of info dir)
+        for dev_entry in alignment["devices"]:
+            device = dev_entry["device"]
+            raw_list = []
+            for fname in dev_entry["filenames"]:
+                marker_path = _find_marker_csv(fname, device, str(marker_base))
+                if marker_path is not None:
+                    try:
+                        dev_info = load_marker_csv_enhanced(marker_path)
+                        ts = dev_info.timestamps_raw.tolist()
+                    except Exception:
+                        ts = []
+                else:
+                    ts = []
+                raw_list.append(ts)
+            dev_entry["raw_markers"] = raw_list
+
         json_path = output_dir / f"subject_{subject_id}_alignment.json"
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(alignment, f, indent=2, default=str)

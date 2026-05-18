@@ -429,27 +429,25 @@ def marker_info(args):
 
         recursive = not args.no_recursive
 
-        # Step 1: Extract marker info reports
+        # Step 1: Extract marker info (skip per-subject CSV, pass data in-memory)
         reports = extract_marker_info(
-            input_dir=input_dir, output_dir=output_dir, recursive=recursive
+            input_dir=input_dir, output_dir=output_dir,
+            recursive=recursive, skip_csv=True,
         )
 
         print(f"Marker info extraction complete:")
         print(f"  Input directory: {input_dir}")
         print(f"  Output directory: {output_dir}")
         print(f"  Recursive: {recursive}")
-        print(f"  Reports generated:")
-        print(f"    Error report: {reports['error_report']}")
-        print(f"    Subject reports:")
-        for subj_name, report_path in reports["subject_reports"].items():
-            print(f"      Subject {subj_name}: {report_path}")
+        print(f"  Error report: {reports['error_report']}")
 
-        # Step 2: Generate timeline figures and alignment JSONs
+        # Step 2: Generate timeline figures and alignment JSONs (in-memory data)
         dpi = getattr(args, "dpi", 150)
         timeline = generate_timeline_figures(
             input_dir=output_dir,
             output_dir=output_dir,
             dpi=dpi,
+            subject_data=reports["subject_dataframes"],
         )
 
         print(f"\nTimeline figures & alignment JSONs generated: {len(timeline)} subject(s)")
