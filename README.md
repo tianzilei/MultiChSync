@@ -65,11 +65,11 @@ batch.py        # Batch processing utilities
 
 ## Features
 
-- **fNIRS**: Convert Shimadzu/NIRS-SPM TXT → SNIRF v1.1 with MNE compatibility patching
+- **fNIRS**: Convert Shimadzu/NIRS-SPM TXT → SNIRF v1.1 with MNE compatibility patching; patch existing SNIRF files (`fnirs patch`)
 - **EEG**: Convert Curry/EEGLAB → BrainVision/EEGLAB/EDF with fixed sampling rate support
 - **ECG**: Convert Biopac ACQ → CSV with fixed sampling rate support
-- **Marker Processing**: Extract, clean, match, and crop event markers across modalities with comprehensive reporting and drift correction
-- **Quality Assessment**: Automated fNIRS signal quality evaluation with metadata embedding
+- **Marker Processing**: Extract, clean, match (traversal + length‑first basematch + manual offset adjustment), and crop event markers across modalities with comprehensive reporting and drift correction
+- **Quality Assessment**: Automated fNIRS signal quality evaluation with metadata embedding in SNIRF, resting‑state metrics computation, and multi‑format visualization
 - **BIDS-Compatible**: Output follows BIDS naming conventions
 
 ## Installation
@@ -86,6 +86,14 @@ batch.py        # Batch processing utilities
 git clone <repository-url>
 cd multichsync
 pip install -e .
+```
+
+### Install with Quality Features
+
+Quality assessment with metadata writing requires `mne-nirs`:
+
+```bash
+pip install -e ".[quality]"
 ```
 
 ### Verify Installation
@@ -129,6 +137,9 @@ multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --output-dir
 
 # ECG: ACQ to CSV
 multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG --sampling-rate 250
+
+# (Optional) Patch existing SNIRF files for MNE compatibility
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --inplace
 ```
 
 ### Step 2: Extract & Clean Markers
@@ -183,8 +194,11 @@ multichsync marker matchcrop --json-path Data/matching/traversal_matched_subject
 # Batch quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
 
-# Quality assessment with metadata written to SNIRF
+# Quality assessment with metadata written to SNIRF (requires mne-nirs)
 multichsync quality batch-with-metadata --input-dir Data/convert/fnirs --output-dir Data/quality
+
+# Compute resting-state metrics (split-half reliability)
+multichsync quality resting-metrics --input-dir Data/convert/fnirs
 
 # Generate visualization plots
 multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
@@ -198,6 +212,9 @@ multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
 multichsync fnirs batch --input-dir Data/raw/fnirs --src-coords Data/source_coordinates.csv --det-coords Data/detector_coordinates.csv --output-dir Data/convert/fnirs
 multichsync eeg batch --input-dir Data/raw/EEG --format BrainVision --output-dir Data/convert/EEG --recursive
 multichsync ecg batch --input-dir Data/raw/ECG --output-dir Data/convert/ECG
+
+# (Optional) Patch SNIRF files for MNE compatibility
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --inplace
 
 # 2. Extract and clean markers
 multichsync marker batch --types fnirs,ecg,eeg
@@ -214,6 +231,24 @@ multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcr
 
 # 6. Quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
+```
+
+## fNIRS Patch
+
+Existing SNIRF files can be patched for MNE compatibility (wavelength validation, HbT handling):
+
+```bash
+# Patch in-place (overwrites original)
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --inplace
+
+# Patch to a new file
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --output Data/convert/fnirs/sub-001_fixed.snirf
+
+# Custom dummy wavelengths
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --inplace --dummy-wavelengths 760.0 850.0
+
+# Keep HbT in measurement list (default: move to aux)
+multichsync fnirs patch --input Data/convert/fnirs/sub-001.snirf --output fixed.snirf --no-move-hbt
 ```
 
 ## Fixed Sampling Rate
@@ -270,6 +305,18 @@ multichsync marker matchcrop --json-path Data/matching/matched_metadata.json --s
 # the device with the most sessions (down‑graded if its alignment shift
 # exceeds 1000 s, i.e. a basematch artefact).
 
+# Manually apply offset adjustments to matched markers
+multichsync marker manual-match \
+  --input-files sub-001_task-rest_fnirs.csv sub-001_task-rest_ecg.csv sub-001_task-rest_eeg.csv \
+  --offsets "[1.5, -0.3, 0]" \
+  --output-dir Data/matching --prefix manual
+
+# Manual match with explicit device names (offset order follows device order)
+multichsync marker manual-match \
+  --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg \
+  --device-names fnirs ecg eeg \
+  --offsets "[0.5, 0.0, -0.2]" \
+  --output-dir Data/matching --prefix adjusted
 ```
 
 ### Base Match (Length-First Alignment — ``multichsync marker basematch``)
@@ -518,17 +565,26 @@ matchcrop_aligned(
 ## Quality Assessment (fNIRS)
 
 ```bash
+# Single-file quality assessment
+multichsync quality assess --input Data/convert/fnirs/sub-001.snirf --output-dir Data/quality
+
 # Basic batch quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality --l-freq 0.01 --h-freq 0.2
 
-# Quality assessment with metadata written to SNIRF output
+# Quality assessment with metadata written to SNIRF output (requires mne-nirs)
+multichsync quality assess-with-metadata --input Data/convert/fnirs/sub-001.snirf --output-dir Data/quality
+
+# Batch quality assessment with metadata written to SNIRF
 multichsync quality batch-with-metadata --input-dir Data/convert/fnirs --output-dir Data/quality
 
-# Compute resting-state metrics
+# Compute resting-state metrics (split-half reliability)
 multichsync quality resting-metrics --input-dir Data/convert/fnirs
 
-# Generate visualization plots
+# Generate visualization plots (single file)
 multichsync quality visualize --input Data/convert/fnirs/sub-001.snirf
+
+# Batch generate visualization plots
+multichsync quality visualize-batch --input-dir Data/convert/fnirs --output-dir Data/quality
 ```
 
 ### Quality Metrics
@@ -608,9 +664,7 @@ pip install -e ".[dev]"
 | Lint | `ruff check multichsync tests` | Static analysis |
 | Typecheck | `mypy multichsync` | Type checking |
 
-### CI
 
-GitHub Actions runs on push/PR to `main`/`develop` with a matrix of 3 OS × Python 3.8–3.12 (excludes macos-3.12, windows-3.12). Pipeline includes test, lint, and coverage check (threshold: 35%).
 
 ## License
 

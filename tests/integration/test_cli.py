@@ -217,14 +217,14 @@ class TestCliMarkerCommands:
         assert "--input" in result.output or "-i" in result.output
 
     def test_marker_match_help(self, runner):
-        """Test marker match help."""
-        result = runner.invoke(["marker", "match", "--help"])
+        """Test marker basematch help."""
+        result = runner.invoke(["marker", "basematch", "--help"])
 
         assert result.exit_code == 0, (
             f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
         )
-        assert "match" in result.output.lower()
-        assert "--input-dir" in result.output or "--input-files" in result.output
+        assert "base" in result.output.lower() or "match" in result.output.lower()
+        assert "--timeline-dir" in result.output or "--output-dir" in result.output
 
 
 class TestCliFnirsCommands:

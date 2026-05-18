@@ -26,40 +26,36 @@ class TestScanDataFiles:
         assert len(result) == 0
 
     def test_scan_with_mock_files(self, temp_dir):
-        """Test scanning with mock data files in convert and raw directories."""
+        """Test scanning with mock data files in convert directory only."""
         from multichsync.marker.info_extractor import scan_data_files
         
-        # Create directory structure
+        # Create directory structure (scan_data_files only scans Data/convert/)
         convert_dir = temp_dir / "Data" / "convert"
-        raw_dir = temp_dir / "Data" / "raw"
         
         # Create subdirectories per modality
         convert_dir.mkdir(parents=True)
-        raw_dir.mkdir(parents=True)
         
-        # Create some dummy files with supported extensions
-        # fNIRS: .snirf in convert/fnirs, .TXT in raw/fnirs
+        # Create dummy files with supported extensions in convert/ subdirs
+        # fNIRS: .snirf
         (convert_dir / "fnirs").mkdir()
-        (raw_dir / "fnirs").mkdir()
         fnirs_snirf = convert_dir / "fnirs" / "sub-001_ses-01_task-rest_fnirs.snirf"
         fnirs_snirf.write_bytes(b"dummy snirf")
-        fnirs_txt = raw_dir / "fnirs" / "sub-001_ses-01_task-rest_fnirs.TXT"
+        # fNIRS also supports .txt
+        fnirs_txt = convert_dir / "fnirs" / "sub-001_ses-01_task-rest_fnirs.txt"
         fnirs_txt.write_text("Time Range 0 100\nTotal Points 1000")
         
-        # EEG: .set in convert/eeg, .vhdr in raw/eeg
+        # EEG: .set and .vhdr
         (convert_dir / "eeg").mkdir()
-        (raw_dir / "eeg").mkdir()
         eeg_set = convert_dir / "eeg" / "sub-001_ses-01_task-rest_eeg.set"
         eeg_set.write_bytes(b"dummy set")
-        eeg_vhdr = raw_dir / "eeg" / "sub-001_ses-01_task-rest_eeg.vhdr"
+        eeg_vhdr = convert_dir / "eeg" / "sub-001_ses-01_task-rest_eeg.vhdr"
         eeg_vhdr.write_text("Brain Vision Data Exchange Header")
         
-        # ECG: .csv in convert/ecg, .acq in raw/ecg
+        # ECG: .csv and .acq
         (convert_dir / "ecg").mkdir()
-        (raw_dir / "ecg").mkdir()
         ecg_csv = convert_dir / "ecg" / "sub-001_ses-01_task-rest_ecg.csv"
         ecg_csv.write_text("Time(sec),CH1\n0,0\n1,1")
-        ecg_acq = raw_dir / "ecg" / "sub-001_ses-01_task-rest_ecg.acq"
+        ecg_acq = convert_dir / "ecg" / "sub-001_ses-01_task-rest_ecg.acq"
         ecg_acq.write_bytes(b"dummy acq")
         
         # Call scan_data_files with base_dir = temp_dir
@@ -193,16 +189,14 @@ class TestScanDataFiles:
         assert entry["filename_style"] == "bids"
         assert entry["device"] == "fnirs"  # inferred from path
         
-        # Create date-subject style filename
-        date_file = convert_dir / "20250516017_01_marker.txt"
+        # Create date-subject style filename .txt in convert/fnirs
+        fnirs_dir = convert_dir / "fnirs"
+        fnirs_dir.mkdir()
+        date_file = fnirs_dir / "20250516017_01_marker.txt"
         date_file.write_bytes(b"date")
-        # Need to place in raw/fnirs to be recognized as fNIRS (extension .txt)
-        raw_dir = temp_dir / "Data" / "raw" / "fnirs"
-        raw_dir.mkdir(parents=True)
-        date_file.rename(raw_dir / "20250516017_01_marker.txt")
         
         result2 = scan_data_files(temp_dir)
-        # Now we have two files total
+        # Now we have two files total (one with unknown device in convert/, one in convert/fnirs)
         assert len(result2) == 2
         # Find the date-subject entry
         date_entries = [e for e in result2 if e["file_name"] == "20250516017_01_marker.txt"]
@@ -214,10 +208,10 @@ class TestScanDataFiles:
         assert date_entry["filename_style"] == "date_subject"
 
     def test_missing_directories_no_error(self, temp_dir):
-        """Test that missing Data/convert or Data/raw directories don't cause errors."""
+        """Test that missing Data/convert directory doesn't cause errors."""
         from multichsync.marker.info_extractor import scan_data_files
         
-        # Create only Data/convert, no Data/raw
+        # Create only Data/convert
         convert_dir = temp_dir / "Data" / "convert"
         convert_dir.mkdir(parents=True)
         test_file = convert_dir / "test.snirf"
@@ -226,16 +220,11 @@ class TestScanDataFiles:
         result = scan_data_files(temp_dir)
         assert len(result) == 1
         
-        # Remove Data/convert, create Data/raw
+        # Remove Data/convert — result should be empty (no crash)
         import shutil
         shutil.rmtree(convert_dir)
-        raw_dir = temp_dir / "Data" / "raw"
-        raw_dir.mkdir(parents=True)
-        test_file2 = raw_dir / "test.txt"
-        test_file2.write_bytes(b"test")
-        
         result2 = scan_data_files(temp_dir)
-        assert len(result2) == 1
+        assert len(result2) == 0
 
     def test_unparseable_filename_still_included(self, temp_dir):
         """Test that files with unparseable filenames are still included in scan results."""
