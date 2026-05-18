@@ -194,10 +194,10 @@ Paradigm-specific Metrics (Task/Resting)
 - Core dependencies listed with version constraints
 - Optional dependencies for specific modules
 
-### No Other Config Files
-- No linter/formatter configs (flake8, black, ruff, etc.)
-- No CI/CD configs (.github/workflows, .gitlab-ci.yml, etc.)
-- No test runner configs (pytest.ini, tox.ini)
+### Other Config Files
+- Linting/formatting: configured in `pyproject.toml` (ruff, black, mypy)
+- Testing: configured in `pyproject.toml` (pytest)
+- No CI/CD configs
 
 ## Build & Deploy
 
