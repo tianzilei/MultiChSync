@@ -3204,17 +3204,21 @@ def match_baseline_cli(args: Any) -> None:
                         parts.append(m)
                 aligned_marker_dict[dn] = np.concatenate(parts) if parts else np.array([], dtype=float)
 
-            # Reference = device with most markers, preferring devices that have
-            # free (non‑aligned) sessions so the matching axis is meaningful.
+            # Reference = device with the most sessions, since it has the most
+            # gaps and its internal gap structure should define the alignment
+            # framework.  Other devices (fewer sessions) are refined in Phase 2
+            # to match this reference.
             _ref_candidates = sorted(
                 valid_devices,
                 key=lambda dn: (
-                    # free-marker count (primary, descending)
+                    # session count (primary, descending) — most gaps
+                    -len(session_dict[dn]),
+                    # free-marker count (secondary, descending)
                     -sum(
                         s["n_markers"] for s in session_dict[dn]
                         if s.get("file_name", "") not in _aligned_fnames
                     ),
-                    # total markers (secondary, descending)
+                    # total markers (tertiary, descending)
                     -len(aligned_marker_dict[dn]),
                 ),
             )
