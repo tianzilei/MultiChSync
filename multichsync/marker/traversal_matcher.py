@@ -3059,8 +3059,10 @@ def match_baseline_cli(args: Any) -> None:
             # alignment JSON.  Start-aligned sessions are snapped to their
             # file_start_time; end-aligned sessions get an extra gap after
             # the natural end if the target end is further out.
-            # Processing in original order ensures session bars in the
-            # stacked timeline respect the user's defined session sequence.
+            #
+            # For blocks of consecutive FREE sessions (not in start/end
+            # groups), the remaining available time between fixed boundaries
+            # is distributed EVENLY as gaps BETWEEN the free sessions.
             device_starts: Dict[str, List[float]] = {}
             device_gaps: Dict[str, List[float]] = {}
 
@@ -3070,8 +3072,15 @@ def match_baseline_cli(args: Any) -> None:
 
                 starts: List[float] = [0.0] * n_sess
                 gaps: List[float] = [0.0] * n_sess
-                t = 0.0
 
+                # --- First pass: position aligned sessions at fixed times ---
+                # Mark which sessions are in start/end alignment groups.
+                _aligned_mask_inner: List[bool] = [
+                    s.get("file_name", "") in _aligned_fnames
+                    for s in sessions
+                ]
+
+                t = 0.0
                 for i in range(n_sess):
                     s = sessions[i]
                     fname = s.get("file_name", "")
@@ -3094,6 +3103,89 @@ def match_baseline_cli(args: Any) -> None:
                         t = max(t, fe)
                     else:
                         t = max(t, natural_end)
+
+                # --- Second pass: distribute gaps evenly inside free blocks ---
+                # A "free block" is a run of consecutive non-aligned sessions
+                # bounded by aligned sessions (or start/end of device).
+                # The available time between the two bounding aligned sessions
+                # minus the sum of free-session durations gives the total gap,
+                # which is split evenly:
+                #   - n_free > 1 : between consecutive sessions (n-1 gaps)
+                #   - n_free == 1 : equally before AND after the single session
+                _i = 0
+                while _i < n_sess:
+                    if _aligned_mask_inner[_i]:
+                        _i += 1
+                        continue
+
+                    # Found start of a free block
+                    _block_start = _i
+                    while _i < n_sess and not _aligned_mask_inner[_i]:
+                        _i += 1
+                    _block_end = _i
+                    _n_free = _block_end - _block_start
+
+                    # Previous boundary: end of last aligned session (or 0)
+                    if _block_start > 0 and _aligned_mask_inner[_block_start - 1]:
+                        _prev_idx = _block_start - 1
+                        _prev_end = (starts[_prev_idx]
+                                     + sessions[_prev_idx]["duration"]
+                                     + gaps[_prev_idx])
+                    else:
+                        _prev_end = 0.0
+
+                    # Next boundary: start of next aligned session, if any.
+                    # If no next aligned session, skip gap distribution.
+                    if _block_end < n_sess and _aligned_mask_inner[_block_end]:
+                        # For end-aligned-only sessions (fe set, no fs), the
+                        # correct start position is target_end - duration, NOT
+                        # the first-pass sequential position (which just stacks
+                        # the gap AFTER the session, making it invisible to the
+                        # free block's available-space calculation).
+                        _next_fname = sessions[_block_end].get("file_name", "")
+                        _next_fe = file_target_end.get(_next_fname)
+                        _next_fs = file_start_time.get(_next_fname)
+                        if _next_fe is not None and _next_fs is None:
+                            _correct_start = _next_fe - sessions[_block_end]["duration"]
+                            if _correct_start >= _prev_end:
+                                # Reposition the end-aligned session so the
+                                # gap is "pulled into" the free block.
+                                _next_start = _correct_start
+                                starts[_block_end] = _correct_start
+                                gaps[_block_end] = 0.0  # natural end = fe
+                            else:
+                                _next_start = starts[_block_end]
+                        else:
+                            _next_start = starts[_block_end]
+                    else:
+                        # Reached end of device with no further aligned
+                        # session — keep first-pass sequential positions.
+                        continue
+
+                    _available = _next_start - _prev_end
+                    _free_sum = sum(sessions[_j]["duration"]
+                                    for _j in range(_block_start, _block_end))
+                    _total_gap = _available - _free_sum
+
+                    if _n_free > 1 and _total_gap > 0:
+                        # Multiple free sessions: distribute total_gap
+                        # evenly as gaps BETWEEN consecutive sessions.
+                        _g_each = _total_gap / (_n_free - 1)
+                        _pos = _prev_end
+                        for _j in range(_block_start, _block_end):
+                            starts[_j] = _pos
+                            if _j < _block_end - 1:
+                                gaps[_j] = _g_each
+                                _pos += sessions[_j]["duration"] + _g_each
+                            else:
+                                _pos += sessions[_j]["duration"]
+                    elif _n_free == 1 and _total_gap > 0:
+                        # Single free session: split total_gap equally
+                        # before and after the session.
+                        _j = _block_start
+                        _g_each = _total_gap / 2.0
+                        starts[_j] = _prev_end + _g_each
+                        gaps[_j] = _g_each
 
                 device_starts[dn] = starts
                 device_gaps[dn] = gaps
