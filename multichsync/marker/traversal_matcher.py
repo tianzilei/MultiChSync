@@ -3109,9 +3109,9 @@ def match_baseline_cli(args: Any) -> None:
                 # bounded by aligned sessions (or start/end of device).
                 # The available time between the two bounding aligned sessions
                 # minus the sum of free-session durations gives the total gap,
-                # which is split evenly:
-                #   - n_free > 1 : between consecutive sessions (n-1 gaps)
-                #   - n_free == 1 : equally before AND after the single session
+                # which is split evenly into (n_free + 1) gaps so that EVERY
+                # free session has gap space both BEFORE and AFTER it:
+                #   prev_end  [g]  [s0]  [g]  [s1]  [g]  ...  [g]  [sn-1]  [g]  next_start
                 _i = 0
                 while _i < n_sess:
                     if _aligned_mask_inner[_i]:
@@ -3167,25 +3167,17 @@ def match_baseline_cli(args: Any) -> None:
                                     for _j in range(_block_start, _block_end))
                     _total_gap = _available - _free_sum
 
-                    if _n_free > 1 and _total_gap > 0:
-                        # Multiple free sessions: distribute total_gap
-                        # evenly as gaps BETWEEN consecutive sessions.
-                        _g_each = _total_gap / (_n_free - 1)
-                        _pos = _prev_end
+                    # Distribute total_gap as (n_free + 1) equal gaps:
+                    # one before the first free session, (n_free - 1) between
+                    # consecutive sessions, and one after the last free session
+                    # before the next aligned boundary.
+                    if _n_free > 0 and _total_gap > 0:
+                        _g_each = _total_gap / (_n_free + 1)
+                        _pos = _prev_end + _g_each
                         for _j in range(_block_start, _block_end):
                             starts[_j] = _pos
-                            if _j < _block_end - 1:
-                                gaps[_j] = _g_each
-                                _pos += sessions[_j]["duration"] + _g_each
-                            else:
-                                _pos += sessions[_j]["duration"]
-                    elif _n_free == 1 and _total_gap > 0:
-                        # Single free session: split total_gap equally
-                        # before and after the session.
-                        _j = _block_start
-                        _g_each = _total_gap / 2.0
-                        starts[_j] = _prev_end + _g_each
-                        gaps[_j] = _g_each
+                            gaps[_j] = _g_each
+                            _pos += sessions[_j]["duration"] + _g_each
 
                 device_starts[dn] = starts
                 device_gaps[dn] = gaps
