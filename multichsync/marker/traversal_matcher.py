@@ -1693,14 +1693,24 @@ def _save_matched_timeline_figure(
         _sessions_labels: List[Dict] = []
 
         if _gi is not None:
-            _gap_positions, _durs, _nm_list = _gi
-            _cum = 0.0
-            for _si, (_dur, _gap, _nm) in enumerate(zip(_durs, _gap_positions, _nm_list)):
-                if _dur > 0:
-                    _s0[_si] = _cum
-                    _s1[_si] = _cum + _dur
-                _cum += _dur + _gap
-                _sessions_labels.append({"nm": _nm})
+            # _gi is either (starts, gaps, durs, nm) [alignment-groups]
+            # or (gaps, durs, nm) [basematch, no alignment groups]
+            if len(_gi) == 4:
+                _starts, _gap_positions, _durs, _nm_list = _gi
+                for _si, (_start, _dur, _gap, _nm) in enumerate(zip(_starts, _durs, _gap_positions, _nm_list)):
+                    if _dur > 0:
+                        _s0[_si] = _start
+                        _s1[_si] = _start + _dur
+                    _sessions_labels.append({"nm": _nm})
+            else:
+                _gap_positions, _durs, _nm_list = _gi
+                _cum = 0.0
+                for _si, (_dur, _gap, _nm) in enumerate(zip(_durs, _gap_positions, _nm_list)):
+                    if _dur > 0:
+                        _s0[_si] = _cum
+                        _s1[_si] = _cum + _dur
+                    _cum += _dur + _gap
+                    _sessions_labels.append({"nm": _nm})
         elif dev_name in stack:
             # Fallback: compute from stack positions
             _sessions = stack[dev_name].get("sessions", [])
@@ -1735,18 +1745,33 @@ def _save_matched_timeline_figure(
 
             # 2. Gap regions (only for _gi path where we have gap data)
             if _gi is not None:
-                _cum_g = 0.0
-                for _si, (_dur, _gap, _nm) in enumerate(zip(_durs, _gap_positions, _nm_list)):
-                    _cum_g += _dur
-                    if _gap > 0.5:
-                        _gl = _cum_g
-                        _gr = _cum_g + _gap
-                        ax.axvspan(_gl, _gr, ymin=0.15, ymax=0.85,
-                                   color="#cccccc", alpha=0.4, zorder=0)
-                        ax.text((_gl + _gr) / 2, 0,
-                                f"Δ{_gap:.0f}s", ha="center", va="center",
-                                fontsize=4.5, color="#666666", style="italic")
-                    _cum_g += _gap
+                if len(_gi) == 4:
+                    # Use actual start positions from device_starts
+                    _starts_g, _gap_positions_g, _durs_g, _nm_list_g = _gi
+                    for _si, (_start, _dur, _gap, _nm) in enumerate(zip(_starts_g, _durs_g, _gap_positions_g, _nm_list_g)):
+                        _sess_end = _start + _dur
+                        if _gap > 0.5:
+                            _gl = _sess_end
+                            _gr = _sess_end + _gap
+                            ax.axvspan(_gl, _gr, ymin=0.15, ymax=0.85,
+                                       color="#cccccc", alpha=0.4, zorder=0)
+                            ax.text((_gl + _gr) / 2, 0,
+                                    f"Δ{_gap:.0f}s", ha="center", va="center",
+                                    fontsize=4.5, color="#666666", style="italic")
+                else:
+                    _gap_positions_g, _durs_g, _nm_list_g = _gi
+                    _cum_g = 0.0
+                    for _si, (_dur, _gap, _nm) in enumerate(zip(_durs_g, _gap_positions_g, _nm_list_g)):
+                        _cum_g += _dur
+                        if _gap > 0.5:
+                            _gl = _cum_g
+                            _gr = _cum_g + _gap
+                            ax.axvspan(_gl, _gr, ymin=0.15, ymax=0.85,
+                                       color="#cccccc", alpha=0.4, zorder=0)
+                            ax.text((_gl + _gr) / 2, 0,
+                                    f"Δ{_gap:.0f}s", ha="center", va="center",
+                                    fontsize=4.5, color="#666666", style="italic")
+                        _cum_g += _gap
 
             # 3. Session boundary lines BETWEEN bars
             for _i in range(len(_all_si) - 1):
@@ -3007,77 +3032,348 @@ def match_baseline_cli(args: Any) -> None:
                     "sessions": s,
                 }
         else:
-            # ── Alignment groups provided → enforce both start and end ──
+            # ── Alignment groups provided → gap‑distribution + sequential session‑matching ──
+            # Place starttime_align files at fixed positions, endtime_align files
+            # at their target_end positions, and distribute all OTHER sessions
+            # sequentially between the fixed boundaries.  Duration differences
+            # become **gaps** BETWEEN sessions (never inside a session).
+            #
+            # Matching: start/end‑aligned sessions are FIXED and do NOT
+            # participate in greedy matching.  Only **free** sessions (those
+            # not in starttime_align or endtime_align) are matched against
+            # each other, using the anchor device's free‑session markers as
+            # the reference timeline.
+
+            # Step 0 — classify sessions: which are aligned (fixed) vs free
+            # Build a set of all filenames that appear in start or end groups.
+            _aligned_fnames: set = set()
+            for _g in start_groups:
+                for _f in _g:
+                    _aligned_fnames.add(_f)
+            for _g in end_groups:
+                for _f in _g:
+                    _aligned_fnames.add(_f)
+
+            # Step 1 — compute per-device session start positions and gaps
+            # Sessions are processed in their ORIGINAL session order from the
+            # alignment JSON.  Start-aligned sessions are snapped to their
+            # file_start_time; end-aligned sessions get an extra gap after
+            # the natural end if the target end is further out.
+            # Processing in original order ensures session bars in the
+            # stacked timeline respect the user's defined session sequence.
+            device_starts: Dict[str, List[float]] = {}
+            device_gaps: Dict[str, List[float]] = {}
+
+            for dn in valid_devices:
+                sessions = session_dict[dn]
+                n_sess = len(sessions)
+
+                starts: List[float] = [0.0] * n_sess
+                gaps: List[float] = [0.0] * n_sess
+                t = 0.0
+
+                for i in range(n_sess):
+                    s = sessions[i]
+                    fname = s.get("file_name", "")
+                    dur = s["duration"]
+
+                    # Fixed-start constraint -> snap to file_start_time
+                    fs = file_start_time.get(fname)
+                    if fs is not None:
+                        starts[i] = fs
+                    else:
+                        starts[i] = t
+
+                    natural_end = starts[i] + dur
+
+                    # Fixed-end constraint -> add extra gap after this session
+                    fe = file_target_end.get(fname)
+                    if fe is not None and fe > natural_end:
+                        gap_after = fe - natural_end
+                        gaps[i] = gap_after
+                        t = max(t, fe)
+                    else:
+                        t = max(t, natural_end)
+
+                device_starts[dn] = starts
+                device_gaps[dn] = gaps
+
+            # Step 2 — reposition markers with the computed session offsets
             aligned_marker_dict: Dict[str, np.ndarray] = {}
             for dn in valid_devices:
                 sessions = session_dict[dn]
-                aligned_parts = []
-                for s in sessions:
-                    offset = s.get("starttime_align", 0.0)
-                    dur = s["duration"]
-                    fname = s.get("file_name", "")
-                    target_end = file_target_end.get(fname, offset + dur)
-
-                    if dur > 0 and target_end > offset:
-                        stretch = (target_end - offset) / dur
-                        aligned = offset + (s["raw_markers"] * stretch)
+                ss = device_starts[dn]
+                parts = []
+                for i, s in enumerate(sessions):
+                    m = s["raw_markers"]
+                    if len(m) > 0:
+                        parts.append(m + ss[i])
                     else:
-                        aligned = s["raw_markers"] + offset
-                    aligned_parts.append(aligned)
+                        parts.append(m)
+                aligned_marker_dict[dn] = np.concatenate(parts) if parts else np.array([], dtype=float)
 
-                if aligned_parts:
-                    concat = np.concatenate(aligned_parts)
-                    concat.sort()
-                    aligned_marker_dict[dn] = concat
-                else:
-                    aligned_marker_dict[dn] = np.array([], dtype=float)
-
-            # Reference = device with most markers
-            ref_name = max(valid_devices, key=lambda dn: len(aligned_marker_dict[dn]))
+            # Reference = device with most markers, preferring devices that have
+            # free (non‑aligned) sessions so the matching axis is meaningful.
+            _ref_candidates = sorted(
+                valid_devices,
+                key=lambda dn: (
+                    # free-marker count (primary, descending)
+                    -sum(
+                        s["n_markers"] for s in session_dict[dn]
+                        if s.get("file_name", "") not in _aligned_fnames
+                    ),
+                    # total markers (secondary, descending)
+                    -len(aligned_marker_dict[dn]),
+                ),
+            )
+            ref_name = _ref_candidates[0]
             device_names = [ref_name] + [dn for dn in valid_devices if dn != ref_name]
-            t_ref = aligned_marker_dict[ref_name]
-            n_ref = len(t_ref)
+            t_ref_all = aligned_marker_dict[ref_name]
+            n_ref = len(t_ref_all)
             print(f"  Ref device: {ref_name} ({n_ref} markers)")
 
-            # Greedy nearest-neighbour matching on the pre-aligned timeline
-            assignments: Dict[str, np.ndarray] = {ref_name: t_ref.copy()}
+            # Identify which anchor markers belong to free (non‑aligned) sessions.
+            # Free markers form the matching reference axis; aligned markers are
+            # copied verbatim into assignments without matching.
+            _ref_sessions = session_dict[ref_name]
+            _ref_free_mask = np.concatenate([
+                np.full(max(int(s["n_markers"]), 0),
+                        1 if s.get("file_name", "") not in _aligned_fnames else 0,
+                        dtype=bool)
+                for s in _ref_sessions
+            ]) if n_ref > 0 else np.array([], dtype=bool)
+            n_ref_free = int(_ref_free_mask.sum())
+            t_ref_free = t_ref_all[_ref_free_mask]
+            print(f"    free sessions: {n_ref_free} markers (aligned sessions excluded from matching)")
+
+            # Step 3 — Phase 2: session‑by‑session shift within gap bounds.
+            # Only non‑aligned (free) sessions are refined.
+            final_marker_dict: Dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
+            final_gap_info: Dict[str, Tuple[List[float], List[float], List[float], List[int]]] = {}
+            shift_history: Dict[str, List[Tuple[float, float]]] = {}
+            # Ref gap info
+            _ref_starts = device_starts[ref_name]
+            _ref_gaps = device_gaps[ref_name]
+            _ref_durs = [s["duration"] for s in _ref_sessions]
+            _ref_nm_l = [s["n_markers"] for s in _ref_sessions]
+            final_gap_info[ref_name] = (_ref_starts, _ref_gaps, _ref_durs, _ref_nm_l)
+
+            for dn in device_names[1:]:
+                sessions = session_dict[dn]
+                n_sess = len(sessions)
+                t_dev = aligned_marker_dict[dn]
+                n_dev = len(t_dev)
+
+                if n_dev == 0 or all(s.get("n_markers", 0) == 0 for s in sessions):
+                    final_marker_dict[dn] = t_dev
+                    final_gap_info[dn] = (
+                        device_starts[dn],
+                        device_gaps[dn],
+                        [s["duration"] for s in sessions],
+                        [s["n_markers"] for s in sessions],
+                    )
+                    shift_history[dn] = [(0.0, float(gap_penalty))]
+                    print(f"  [{dn}] 0 markers, all gaps")
+                    continue
+
+                gap_pos = list(device_gaps[dn])
+                starts = device_starts[dn]
+                repositioned = t_dev.copy()
+
+                if n_sess > 1 and any(g > 0.01 for g in gap_pos):
+                    # Map each marker to its session index
+                    marker_sess_idx = np.concatenate([
+                        np.full(int(s["n_markers"]), si, dtype=int)
+                        for si, s in enumerate(sessions)
+                        if s["n_markers"] > 0
+                    ])
+                    if len(marker_sess_idx) > 0:
+                        for si in range(n_sess):
+                            sess_mask = marker_sess_idx == si
+                            sess_inds = np.where(sess_mask)[0]
+                            if len(sess_inds) == 0:
+                                continue
+
+                            # Only refine free (non‑aligned) sessions
+                            _fname = sessions[si].get("file_name", "")
+                            if _fname in _aligned_fnames:
+                                continue
+
+                            # Gaps available on each side of this session
+                            gap_before = gap_pos[si - 1] if si > 0 else 0.0
+                            gap_after = gap_pos[si] if si < n_sess - 1 else 0.0
+
+                            if gap_before <= 0.01 and gap_after <= 0.01:
+                                continue
+
+                            shift_min = -gap_before
+                            shift_max = gap_after
+
+                            # Anchor markers roughly in this session's window
+                            sess_t_start = starts[si]
+                            sess_t_end = starts[si] + sessions[si]["duration"]
+                            anchor_mask = (t_ref_all >= sess_t_start - 1.0) & (t_ref_all <= sess_t_end + 1.0)
+                            anchor_vals = t_ref_all[anchor_mask]
+                            if len(anchor_vals) == 0:
+                                continue
+
+                            best_shift = 0.0
+                            best_mean = float("inf")
+                            gap_range = gap_before + gap_after
+
+                            if gap_range > 0:
+                                step = 0.1 if gap_range <= 5.0 else (0.5 if gap_range <= 30.0 else 2.0)
+                                n_steps = int(np.floor(gap_range / step)) + 1
+
+                                for shift_step in range(n_steps + 1):
+                                    shift = round(shift_min + shift_step * step, 2)
+                                    if shift > shift_max + 0.01:
+                                        break
+                                    shifted = repositioned[sess_inds] + shift
+
+                                    # Greedy match within this session
+                                    sort_idx = np.argsort(shifted)
+                                    sorted_s = shifted[sort_idx]
+                                    used_local = np.zeros(len(shifted), dtype=bool)
+                                    total_d = 0.0
+                                    for av in anchor_vals:
+                                        pos = np.searchsorted(sorted_s, av)
+                                        best_d = float("inf")
+                                        best_p = -1
+                                        for off in (-1, 0, 1):
+                                            p = pos + off
+                                            if 0 <= p < len(sorted_s) and not used_local[p]:
+                                                d = abs(sorted_s[p] - av)
+                                                if d < best_d:
+                                                    best_d = d
+                                                    best_p = p
+                                        if best_d <= max_time_diff and best_p >= 0:
+                                            total_d += best_d
+                                            used_local[best_p] = True
+                                        else:
+                                            total_d += gap_penalty
+
+                                    mean_d = total_d / len(anchor_vals)
+                                    if mean_d < best_mean:
+                                        best_mean = mean_d
+                                        best_shift = shift
+
+                                if abs(best_shift) > 0.01:
+                                    repositioned[sess_inds] += best_shift
+                                    # Consume shift from adjacent gaps
+                                    if best_shift < 0 and si > 0:
+                                        gap_pos[si - 1] = max(0.0, gap_pos[si - 1] + best_shift)
+                                    elif best_shift > 0 and si < n_sess - 1:
+                                        gap_pos[si] = max(0.0, gap_pos[si] - best_shift)
+
+                final_marker_dict[dn] = repositioned
+                final_gap_info[dn] = (
+                    starts,
+                    gap_pos,
+                    [s["duration"] for s in sessions],
+                    [s["n_markers"] for s in sessions],
+                )
+                shift_history[dn] = [(sum(gap_pos), 0.0)]
+                _free_sessions = sum(1 for s in sessions if s.get("file_name", "") not in _aligned_fnames)
+                print(f"    [{dn}] {n_sess} session(s) ({_free_sessions} free), gap={sum(gap_pos):.1f}s")
+
+            # Step 4 — Greedy nearest‑neighbour matching.
+            # **Only free sessions are matched**; aligned sessions are copied
+            # verbatim into the output with their fixed positions.
+            assignments: Dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
             group_indices: Dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
-            shift_history: Dict[str, List[Tuple[int, float]]] = {}
 
             for other_name in device_names[1:]:
-                t_other = aligned_marker_dict[other_name]
+                t_other = final_marker_dict[other_name]
                 n_other = len(t_other)
                 if n_other == 0:
                     assignments[other_name] = np.full(n_ref, np.nan)
                     group_indices[other_name] = np.full(n_ref, -1, dtype=int)
-                    shift_history[other_name] = [(0, gap_penalty)]
                     print(f"  [{other_name}] 0 markers, all gaps")
                     continue
 
-                sort_idx = np.argsort(t_other)
-                sorted_other = t_other[sort_idx]
-                used = np.zeros(n_other, dtype=bool)
+                # Build a free‑only mask for the other device
+                _oth_sessions = session_dict[other_name]
+                _oth_free_mask = np.concatenate([
+                    np.full(max(int(s["n_markers"]), 0),
+                            1 if s.get("file_name", "") not in _aligned_fnames else 0,
+                            dtype=bool)
+                    for s in _oth_sessions
+                ]) if n_other > 0 else np.array([], dtype=bool)
+
+                # Only the free markers of the other device are matched to
+                # the free markers of the anchor.  Aligned markers are placed
+                # verbatim (they are already at their fixed position in t_other).
+                t_other_free = t_other[_oth_free_mask]
+                n_other_free = len(t_other_free)
+
+                # Pre‑assign aligned markers: they come from t_other at their
+                # original index positions.
+                def _find_marker_positions(
+                    _markers: np.ndarray, _query: np.ndarray
+                ) -> Tuple[np.ndarray, np.ndarray]:
+                    """For each query time, find closest marker position and index.
+                    Returns (time_positions, indices) with NaN/-1 for gaps."""
+                    _q_sorted = np.argsort(_markers)
+                    _q_sorted_v = _markers[_q_sorted]
+                    _out_t = np.full(len(_query), np.nan)
+                    _out_i = np.full(len(_query), -1, dtype=int)
+                    # For each anchor marker, find best match in query
+                    _used_q = np.zeros(len(_markers), dtype=bool)
+                    for _ai in np.argsort(_query):
+                        _av = _query[_ai]
+                        _p = np.searchsorted(_q_sorted_v, _av)
+                        _cands = []
+                        for _off in (-1, 0, 1):
+                            _pp = _p + _off
+                            if 0 <= _pp < len(_q_sorted_v) and not _used_q[_pp]:
+                                _cands.append((_pp, abs(_q_sorted_v[_pp] - _av)))
+                        if _cands:
+                            _bp, _bd = min(_cands, key=lambda x: x[1])
+                            if _bd <= max_time_diff:
+                                _out_t[_ai] = _q_sorted_v[_bp]
+                                _out_i[_ai] = int(_q_sorted[_bp])
+                                _used_q[_bp] = True
+                    return _out_t, _out_i
+
                 dev_assign = np.full(n_ref, np.nan)
                 dev_idx = np.full(n_ref, -1, dtype=int)
-                n_matched = 0
 
-                for i in range(n_ref):
-                    rt = t_ref[i]
-                    pos = np.searchsorted(sorted_other, rt)
-                    candidates = [(p, abs(sorted_other[p] - rt)) for off in (-1, 0, 1)
-                                  if 0 <= (p := pos + off) < n_other and not used[p]]
-                    if candidates:
-                        bp, bd = min(candidates, key=lambda x: x[1])
-                        if bd <= max_time_diff:
-                            dev_assign[i] = sorted_other[bp]
-                            dev_idx[i] = int(sort_idx[bp])
-                            used[bp] = True
-                            n_matched += 1
+                # 1. Aligned anchor markers → copy from other device verbatim
+                #    (anchor aligned markers keep their fixed positions)
+                _aligned_ref_indices = np.where(~_ref_free_mask)[0]
+                for _ai in _aligned_ref_indices:
+                    dev_assign[_ai] = t_ref_all[_ai]
+                    # Find matching index in other device's aligned markers
+                    _aligned_other_idx = np.where(~_oth_free_mask)[0]
+                    _best = min(
+                        ((_oi, abs(t_other[_oi] - t_ref_all[_ai]))
+                         for _oi in _aligned_other_idx
+                         if not np.isnan(t_other[_oi])),
+                        key=lambda x: x[1], default=(None, None)
+                    )
+                    if _best[0] is not None and _best[1] <= max_time_diff:
+                        dev_idx[_ai] = int(_best[0])
+                    # dev_assign stays as t_ref_all[_ai] (the anchor's time)
+
+                # 2. Free anchor markers → greedy match against other's free markers
+                _free_ref_indices = np.where(_ref_free_mask)[0]
+                if n_other_free > 0 and len(_free_ref_indices) > 0:
+                    _free_ref_vals = t_ref_all[_free_ref_indices]
+                    _free_t, _free_i = _find_marker_positions(
+                        t_other_free, _free_ref_vals
+                    )
+                    for _j, _ai in enumerate(_free_ref_indices):
+                        if not np.isnan(_free_t[_j]):
+                            dev_assign[_ai] = _free_t[_j]
+                            dev_idx[_ai] = _free_i[_j]
+
+                n_matched_total = int(np.sum(dev_idx >= 0))
 
                 assignments[other_name] = dev_assign
                 group_indices[other_name] = dev_idx
-                shift_history[other_name] = [(0, 0.0)]
-                print(f"  [{other_name}] matched {n_matched}/{n_ref} (via JSON alignment)")
+                print(f"  [{other_name}] matched {n_matched_total}/{n_ref} "
+                      f"({n_other_free} free other markers vs {n_ref_free} free ref markers)")
 
             # Per-group distances
             per_marker_distances = np.full(n_ref, np.nan)
@@ -3092,11 +3388,11 @@ def match_baseline_cli(args: Any) -> None:
             mean_distance = float(np.mean(per_marker_distances[valid_dist_mask])) if valid_dist_mask.any() else 0.0
             n_matched_groups = int(valid_dist_mask.sum())
 
-            gaps: Dict[str, List[int]] = {}
+            gap_indices: Dict[str, List[int]] = {}
             for d in device_names:
                 gs = np.where(group_indices[d] == -1)[0].tolist()
                 if gs:
-                    gaps[d] = gs
+                    gap_indices[d] = gs
 
             result = TraversalMatchResult(
                 anchor_name=ref_name,
@@ -3108,9 +3404,10 @@ def match_baseline_cli(args: Any) -> None:
                 mean_distance=mean_distance,
                 n_groups=n_ref,
                 n_matched_groups=n_matched_groups,
-                gaps=gaps,
+                gaps=gap_indices,
                 shift_history=shift_history,
             )
+            result._gap_info = final_gap_info
 
             # Build stack_out for saving
             stack_out = {}

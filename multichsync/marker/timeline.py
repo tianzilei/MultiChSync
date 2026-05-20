@@ -269,11 +269,10 @@ def _build_alignment_json(
     """
     Build alignment data for a subject, suitable for ``marker basematch``.
 
-    ``starttime_align`` and ``endtime_align`` start as empty arrays —
-    the user manually edits these to define filename groups that should
-    start (or end) at the same time.  ``needmatch`` is a flat list of
-    **all** filenames that basematch should process, and is the default
-    set used when ``starttime_align`` is still empty.
+    ``starttime_align`` and ``endtime_align`` are pre-populated with
+    one example group each (first-device first files, last-device last
+    files).  The user edits these to define filename groups that should
+    start (or end) at the same time.
 
     Per-device fields (``filenames``, ``durations``, ``n_markers``) are
     provided for basematch to look up individual session properties.
@@ -286,7 +285,7 @@ def _build_alignment_json(
 
     Returns:
         Dictionary with keys ``subject_id``, ``starttime_align``,
-        ``endtime_align``, ``needmatch``, and ``devices``.
+        ``endtime_align``, and ``devices``.
     """
     devices_list = []
     all_file_names: List[str] = []
@@ -315,25 +314,33 @@ def _build_alignment_json(
             "durations": [s["duration"] for s in sessions],
         })
 
-    # Single example cell so users see the expected format when they
-    # open the JSON for manual editing.
-    example_start: List[List[str]] = []
-    example_end: List[List[str]] = []
-    if all_file_names:
-        first_files = [d["filenames"][0] for d in devices_list if d["filenames"]]
-        if first_files:
-            example_start.append(first_files)
-        last_files = [d["filenames"][-1] for d in devices_list if d["filenames"]]
-        if last_files:
-            example_end.append(last_files)
+    # Pre-populate start/end groups by sequence_id across devices.
+    # Each sequence_id that appears in multiple devices forms a start group
+    # and an end group, so the user sees the expected format immediately.
+    from collections import defaultdict, Counter
+    _seq_to_fnames: Dict[str, List[str]] = defaultdict(list)
+    _seq_device_count: Counter = Counter()
+    for d in devices_list:
+        for sid, fname in zip(d["sequence_ids"], d["filenames"]):
+            _seq_to_fnames[sid].append(fname)
+            _seq_device_count[sid] += 1
+    # Only include sequence_ids that appear on **multiple** devices.
+    _shared_seqs = sorted(
+        (s for s, c in _seq_device_count.items() if c > 1),
+        key=lambda x: int(x) if x.isdigit() else x,
+    )
+    start_groups = [_seq_to_fnames[s] for s in _shared_seqs]
+    # End groups: last shared sequence across all devices
+    end_groups = []
+    if _shared_seqs:
+        end_groups.append(_seq_to_fnames[_shared_seqs[-1]])
 
     return {
         "subject_id": subject_id,
-        "_example_starttime_align": example_start,
-        "_example_endtime_align": example_end,
-        "starttime_align": [],
-        "endtime_align": [],
-        "needmatch": all_file_names,
+        "starttime_align": start_groups,
+        "endtime_align": end_groups,
+        # needmatch is no longer generated; basematch uses all filenames
+        # from devices[].filenames when needmatch is absent.
         "devices": devices_list,
     }
 
