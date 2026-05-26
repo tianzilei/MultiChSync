@@ -137,6 +137,18 @@ def rename_bids_task(filename: str, old_taskname: str, new_taskname: str) -> str
     return re.sub(pattern, replacement, filename)
 
 
+def rename_bids_session(filename: str, new_session: int) -> str:
+    """
+    Rename BIDS session number in filename to match a new session.
+
+    Replaces any ``ses-XX`` with ``ses-{new_session:02d}``.
+
+    Example: ``'sub-068_ses-01_task-rest_fnirs.snirf'`` with ``new_session=5``
+             → ``'sub-068_ses-05_task-rest_fnirs.snirf'``
+    """
+    return re.sub(r"ses-\d+", f"ses-{new_session:02d}", filename)
+
+
 # ──────────────────────────────────────────────────────────────────────
 # New helpers: session-based batch cropping
 # ──────────────────────────────────────────────────────────────────────
@@ -727,17 +739,28 @@ def matchcrop_by_sessions(
     taskname: Optional[str] = None,
     stacked_csv_path: Optional[Path] = None,
     convert_base_dir: str = "Data/convert",
+    output_mode: str = "subject",
 ) -> Dict:
     """Crop multi-device data **per session**, one sub-directory per session.
 
     The **taskname** is auto-detected from the original BIDS filenames
-    (e.g. ``_task-rest_`` → ``"rest"``).  Pass an explicit *taskname*
+    (e.g. ``_task-rest_`` \u2192 ``"rest"``).  Pass an explicit *taskname*
     to rename the task in output files.
+
+    **Output modes:**
+
+    - ``"subject"`` (default)::
+
+        {output_dir}/ses-{N}/sub-{id}_ses-{N}_task-{task}_{type}.ext
+
+    - ``"device"``::
+
+        {output_dir}/{device}/subject-{id}/ses-{N}/sub-{id}_ses-{N}_task-{task}_{type}.ext
 
     Workflow
     --------
     1. Read metadata JSON (simple or rich format).
-    2. Read the stacked timeline CSV → discover devices & session counts.
+    2. Read the stacked timeline CSV \u2192 discover devices & session counts.
     3. Pick the **device with the most sessions** as reference.
     4. For every reference session:
        a. Determine the consensus time range from the reference device's
@@ -745,7 +768,7 @@ def matchcrop_by_sessions(
        b. For each device, look up its alignment shift and find the
           appropriate converted data file.
        c. Crop the device's raw data to that session's consensus range.
-       d. Save output to ``{output_dir}/ses-{N}/`` with the task name.
+       d. Save output to the appropriate directory (see output modes above).
 
     Parameters
     ----------
@@ -753,7 +776,8 @@ def matchcrop_by_sessions(
         Path to ``basematched_subject-{id}_metadata.json`` (simple format) or
         the traversal-match equivalent (rich format with ``device_info``).
     output_dir : Path, optional
-        Root output directory.  Defaults to ``{matching_dir}/../matchcrop/subject-{id}/``.
+        Root output directory.  Defaults to ``{matching_dir}/../matchcrop/subject-{id}/``
+        (subject mode) or ``{matching_dir}/../matchcrop/`` (device mode).
     taskname : str, optional
         New BIDS task name for output files.  If ``None`` (default),
         the original task name from the data files is kept unchanged.
@@ -762,6 +786,9 @@ def matchcrop_by_sessions(
         not provided.
     convert_base_dir : str
         Base directory for converted data (default: ``Data/convert``).
+    output_mode : str
+        Output directory structure: ``"subject"`` (default, subject/ses/) or
+        ``"device"`` (device/subject/ses/).
 
     Returns
     -------
@@ -811,7 +838,10 @@ def matchcrop_by_sessions(
 
     # ── 5. Determine output root ──────────────────────────────────────
     if output_dir is None:
-        output_dir = json_path.parent.parent / "matchcrop" / f"subject-{subject_id}"
+        if output_mode == "device":
+            output_dir = json_path.parent.parent / "matchcrop"
+        else:
+            output_dir = json_path.parent.parent / "matchcrop" / f"subject-{subject_id}"
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
 
@@ -919,6 +949,13 @@ def matchcrop_by_sessions(
         }
 
         for device in all_devices:
+            # ── Device-specific output directory ──
+            if output_mode == "device":
+                device_ses_dir = output_root / device / f"subject-{subject_id}" / ses_bids
+            else:
+                device_ses_dir = ses_dir
+            device_ses_dir.mkdir(parents=True, exist_ok=True)
+
             device_type = detect_device_type(device)
             shift = shifts.get(device, 0.0)
 
@@ -1029,14 +1066,18 @@ def matchcrop_by_sessions(
                 shift_sane = False
             # Build output BIDS filename from the actual data file.
             # e.g. "sub-100_ses-01_task-rest_fnirs.snirf"
-            #   → "sub-100_ses-01_task-synchronized_fnirs.snirf"
+            #   → "sub-100_ses-01_task-rest_fnirs.snirf" (task rename)
+            #   → "sub-100_ses-05_task-rest_fnirs.snirf" (session rename to match ref)
             final_bids_stem = rename_bids_task(
                 converted_file.stem, old_taskname, taskname or old_taskname
             )
+            # Replace session number with the reference session number
+            # so all devices' output files use the same session ID
+            final_bids_stem = rename_bids_session(final_bids_stem, ses_num)
 
             if not shift_sane:
                 # Shift mismatch → copy file as-is instead of cropping
-                _copy_file_to_output(converted_file, device_type, ses_dir, final_bids_stem)
+                _copy_file_to_output(converted_file, device_type, device_ses_dir, final_bids_stem)
                 msg = (f"    {device}: shift mismatch, copied {converted_file.name} as-is "
                        f"→ {final_bids_stem}.*")
                 print(msg)
@@ -1053,7 +1094,7 @@ def matchcrop_by_sessions(
                 # Use effective_shift (per-session offset from stacked_timeline)
                 # instead of the raw metadata shift (total_gap).
                 if device_type == "fnirs":
-                    out_path = ses_dir / f"{final_bids_stem}.snirf"
+                    out_path = device_ses_dir / f"{final_bids_stem}.snirf"
                     crop_result = crop_fnirs_data(
                         input_file=converted_file,
                         output_file=out_path,
@@ -1062,7 +1103,7 @@ def matchcrop_by_sessions(
                         device_offset=effective_shift,
                     )
                 elif device_type == "ecg":
-                    out_path = ses_dir / f"{final_bids_stem}.csv"
+                    out_path = device_ses_dir / f"{final_bids_stem}.csv"
                     crop_result = crop_ecg_data(
                         input_file=converted_file,
                         output_file=out_path,
@@ -1082,13 +1123,15 @@ def matchcrop_by_sessions(
                             end_time=t_end,
                             device_offset=effective_shift,
                         )
-                        ses_dir.mkdir(parents=True, exist_ok=True)
+                        device_ses_dir.mkdir(parents=True, exist_ok=True)
                         for ext in [".vhdr", ".vmrk", ".eeg"]:
                             for src in tmp_out.glob(f"*{ext}"):
                                 new_name = rename_bids_task(
                                     src.name, old_taskname, taskname or old_taskname
                                 )
-                                dst = ses_dir / new_name
+                                # Also replace session number to match reference
+                                new_name = rename_bids_session(new_name, ses_num)
+                                dst = device_ses_dir / new_name
                                 shutil.copy2(src, dst)
                 else:
                     raise ValueError(f"Unknown device type: {device_type}")
@@ -1099,7 +1142,7 @@ def matchcrop_by_sessions(
                 }
             except ValueError as e:
                 # Crop range outside file bounds → copy file as-is
-                _copy_file_to_output(converted_file, device_type, ses_dir, final_bids_stem)
+                _copy_file_to_output(converted_file, device_type, device_ses_dir, final_bids_stem)
                 msg = (f"    {device}: crop range outside data, copied "
                        f"{converted_file.name} as-is → {final_bids_stem}.*")
                 print(msg)
@@ -1121,7 +1164,13 @@ def matchcrop_by_sessions(
         ses_result["stats"] = {"ok": n_ok, "copied_asis": n_copy,
                                "skipped": n_skip, "failed": n_fail}
 
-        # Save per-session metadata
+         # Determine where to save session artifacts (metadata, figure)
+        if output_mode == "device":
+            ses_artifacts_dir = output_root / ref_device / f"subject-{subject_id}" / ses_bids
+        else:
+            ses_artifacts_dir = ses_dir
+        ses_artifacts_dir.mkdir(parents=True, exist_ok=True)
+
         ses_meta = {
             "subject_id": subject_id,
             "session": ses_bids,
@@ -1132,13 +1181,13 @@ def matchcrop_by_sessions(
                 for d in ses_result["devices"]
             },
         }
-        meta_path = ses_dir / "crop_metadata.json"
+        meta_path = ses_artifacts_dir / "crop_metadata.json"
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(ses_meta, f, indent=2)
 
         # Save crop timeline figure (shows the crop window overlaid)
         try:
-            fig_path = ses_dir / f"crop_timeline_{ses_bids}.png"
+            fig_path = ses_artifacts_dir / f"crop_timeline_{ses_bids}.png"
             _save_crop_timeline_figure(
                 df=df,
                 devices=all_devices,
@@ -1188,6 +1237,7 @@ def batch_matchcrop_from_matching_dir(
     output_dir: str = "Data/matchcrop",
     taskname: Optional[str] = None,
     convert_base_dir: str = "Data/convert",
+    output_mode: str = "subject",
 ) -> Dict:
     """Scan a matching directory and crop by sessions for every subject.
 
@@ -1195,9 +1245,15 @@ def batch_matchcrop_from_matching_dir(
     traversal_match prefixes), groups them by subject, and runs
     :func:`matchcrop_by_sessions` for each.
 
-    The **taskname** is auto-detected from the original BIDS filenames
-    in the convert directory (e.g. ``_task-rest_`` → task ``"rest"``).
-    Pass an explicit value to override (renames the task in output files).
+    **Output modes:**
+
+    - ``"subject"`` (default)::
+
+        {output_dir}/subject-{id}/ses-{N}/...
+
+    - ``"device"``::
+
+        {output_dir}/{device}/subject-{id}/ses-{N}/...
 
     Parameters
     ----------
@@ -1205,13 +1261,14 @@ def batch_matchcrop_from_matching_dir(
         Directory containing the matching outputs
         (e.g. ``basematched_subject-101_metadata.json``).
     output_dir : str
-        Root output directory.  Per-subject results go into
-        ``{output_dir}/subject-{id}/``.
+        Root output directory.
     taskname : str, optional
         New BIDS task name for cropped files.  If ``None`` (default),
         the original task name from the data files is preserved.
     convert_base_dir : str
         Base directory for converted raw data.
+    output_mode : str
+        Output directory structure: ``"subject"`` (default) or ``"device"``.
 
     Returns
     -------
@@ -1254,7 +1311,10 @@ def batch_matchcrop_from_matching_dir(
                 chosen_json = jf
                 break
 
-        subj_output = Path(output_dir) / f"subject-{subject_id}"
+        if output_mode == "device":
+            subj_output = Path(output_dir)
+        else:
+            subj_output = Path(output_dir) / f"subject-{subject_id}"
         print(f"\n{'─'*50}")
         print(f"Subject {subject_id} → {subj_output}")
 
@@ -1264,6 +1324,7 @@ def batch_matchcrop_from_matching_dir(
                 output_dir=subj_output,
                 taskname=taskname,
                 convert_base_dir=convert_base_dir,
+                output_mode=output_mode,
             )
             overall_results[subject_id] = result
             n_sessions = len(result.get("sessions", {}))

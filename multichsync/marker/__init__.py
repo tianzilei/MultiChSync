@@ -37,6 +37,7 @@ from .matchcrop_aligned import (
     calculate_aligned_time_range,
     apply_drift_correction,
     rename_bids_task,
+    rename_bids_session,
 )
 
 from .adjust_offsets import (
@@ -79,6 +80,7 @@ __all__ = [
     "calculate_aligned_time_range",
     "apply_drift_correction",
     "rename_bids_task",
+    "rename_bids_session",
     "adjust_offsets",
     "parse_offset_spec",
     "parse_offset_list",
