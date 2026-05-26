@@ -175,6 +175,12 @@ def crop_ecg_data(
     mask = (df[time_col] >= actual_start) & (df[time_col] <= actual_end)
     cropped_df = df[mask].copy()
 
+    if len(cropped_df) == 0:
+        raise ValueError(
+            f"Crop range [{actual_start:.3f}, {actual_end:.3f}]s contains no data "
+            f"(device time range [{df[time_col].min():.3f}, {df[time_col].max():.3f}]s)"
+        )
+
     # Adjust time (subtract start offset so time starts from 0)
     cropped_df[time_col] = cropped_df[time_col] - actual_start
 

@@ -440,7 +440,7 @@ def _find_device_session_for_ref(df: pd.DataFrame,
 
         if ses_bounds:
             best_ses: Optional[int] = None
-            best_overlap = -1.0
+            best_overlap = 0.0
             for ses, (s_start, s_end) in ses_bounds.items():
                 overlap_start = max(t_start, s_start)
                 overlap_end = min(t_end, s_end)
@@ -448,7 +448,7 @@ def _find_device_session_for_ref(df: pd.DataFrame,
                 if overlap > best_overlap:
                     best_overlap = overlap
                     best_ses = ses
-            if best_ses is not None:
+            if best_ses is not None and best_overlap > 0.0:
                 return best_ses
 
     # --- Pass 3: fallback ────────────────────────────────────────────
@@ -612,6 +612,10 @@ def _save_crop_timeline_figure(
         marker_indices = df[index_col].values if index_col in df.columns else np.full(len(df), -1)
         session_vals = df[session_col].values if session_col in df.columns else np.full(len(df), np.nan)
 
+        # Reference device stacked_time — fallback for gap x-positions
+        ref_stacked = f"{ref_device}_stacked_time"
+        ref_times = df[ref_stacked].values if ref_stacked in df.columns else marker_times
+
         # ── Background track ──────────────────────────────────────────
         ax.axhline(y=0, xmin=0, xmax=1, color="#dddddd",
                    linewidth=2, alpha=0.3, zorder=0)
@@ -644,18 +648,24 @@ def _save_crop_timeline_figure(
                         fontweight="bold")
 
         # ── Matched markers (filled) ──────────────────────────────────
-        valid_time = ~np.isnan(marker_times)
-        if np.any(valid_time):
-            matched_mask = valid_time & (marker_indices >= 0)
-            if np.any(matched_mask):
-                ax.scatter(marker_times[matched_mask], np.zeros_like(marker_times[matched_mask]),
+        has_index_col = index_col in df.columns
+        if has_index_col:
+            matched_mask = marker_indices >= 0
+            matched_times = marker_times[matched_mask]
+            matched_times = matched_times[~np.isnan(matched_times)]
+            if len(matched_times) > 0:
+                ax.scatter(matched_times, np.zeros_like(matched_times),
                            marker="o", s=8, color=color, edgecolors="white",
                            linewidths=0.2, zorder=3, alpha=0.7)
 
             # ── Gap markers (hollow, at ref positions) ────────────────
-            gap_mask = valid_time & (marker_indices == -1)
-            if np.any(gap_mask):
-                ax.scatter(marker_times[gap_mask], np.zeros_like(marker_times[gap_mask]),
+            # device_stacked_time is NaN for gaps, so use reference
+            # device's stacked_time as the x‑position fallback.
+            gap_mask = marker_indices == -1
+            gap_times = ref_times[gap_mask]
+            gap_times = gap_times[~np.isnan(gap_times)]
+            if len(gap_times) > 0:
+                ax.scatter(gap_times, np.zeros_like(gap_times),
                            marker="o", s=6, facecolors="none",
                            edgecolors=color, linewidths=0.5, alpha=0.4,
                            zorder=3)
@@ -1112,21 +1122,6 @@ def matchcrop_by_sessions(
 
             device_start = t_start - effective_shift
             device_end = t_end - effective_shift
-            shift_sane = True
-            if device_start < -300.0 and device_end < -300.0:
-                msg = (f"    {device}: device time range [{device_start:.1f}, "
-                       f"{device_end:.1f}]s is far negative "
-                       f"(effective_shift={effective_shift:.1f}s), skipped")
-                print(msg)
-                ses_result["devices"][device] = {"status": "skipped_shift_mismatch", "reason": msg}
-                shift_sane = False
-            if shift_sane and device_start > 1e8:
-                msg = (f"    {device}: device time start {device_start:.0f}s is "
-                       f"suspiciously large (effective_shift={effective_shift:.1f}s), "
-                       f"skipped")
-                print(msg)
-                ses_result["devices"][device] = {"status": "skipped_shift_mismatch", "reason": msg}
-                shift_sane = False
             # Build output BIDS filename from the actual data file.
             # e.g. "sub-100_ses-01_task-rest_fnirs.snirf"
             #   → "sub-100_ses-01_task-rest_fnirs.snirf" (task rename)
@@ -1141,15 +1136,6 @@ def matchcrop_by_sessions(
             # Replace session number with the reference session number
             # so all devices' output files use the same session ID
             final_bids_stem = rename_bids_session(final_bids_stem, ses_num)
-
-            if not shift_sane:
-                # Shift mismatch → copy file as-is instead of cropping
-                _copy_file_to_output(converted_file, device_type, device_ses_dir, final_bids_stem)
-                msg = (f"    {device}: shift mismatch, copied {converted_file.name} as-is "
-                       f"→ {final_bids_stem}.*")
-                print(msg)
-                ses_result["devices"][device] = {"status": "copied_asis", "reason": msg}
-                continue
 
             print(f"    {device}: cropping from {converted_file.name} "
                   f"(effective_shift={effective_shift:+.2f}s, "
@@ -1276,12 +1262,14 @@ def matchcrop_by_sessions(
 
         results["sessions"][ses_bids] = ses_result
 
-    # ── 9. Save no-crop report (devices not successfully cropped) ─────
+    # ── 9. Save no-crop report (devices that produced no output) ─────
+    _NO_CROP_STATUSES = {"skipped_gap", "skipped_shift_mismatch",
+                         "skipped_crop_range", "file_not_found", "error"}
     no_crop_entries: List[Dict] = []
     for ses_bids, ses_res in results.get("sessions", {}).items():
         for dev, dev_res in ses_res.get("devices", {}).items():
             status = dev_res.get("status")
-            if status != "ok":
+            if status in _NO_CROP_STATUSES:
                 no_crop_entries.append({
                     "session": ses_bids,
                     "device": dev,
@@ -1459,6 +1447,8 @@ def batch_matchcrop_from_matching_dir(
         json.dump(report, f, indent=2)
 
     # Save batch-level no-crop report
+    _NO_CROP_STATUSES = {"skipped_gap", "skipped_shift_mismatch",
+                         "skipped_crop_range", "file_not_found", "error"}
     all_no_crop_entries: List[Dict] = []
     for sid, r in overall_results.items():
         if not isinstance(r, dict) or "sessions" not in r:
@@ -1466,7 +1456,7 @@ def batch_matchcrop_from_matching_dir(
         for ses_bids, ses_res in r.get("sessions", {}).items():
             for dev, dev_res in ses_res.get("devices", {}).items():
                 status = dev_res.get("status")
-                if status != "ok":
+                if status in _NO_CROP_STATUSES:
                     all_no_crop_entries.append({
                         "subject_id": sid,
                         "session": ses_bids,
