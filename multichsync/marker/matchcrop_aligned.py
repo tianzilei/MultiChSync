@@ -905,7 +905,6 @@ def matchcrop_by_sessions(
     for ses_num in ref_session_nums:
         ses_bids = f"ses-{ses_num:02d}"
         ses_dir = output_root / ses_bids
-        ses_dir.mkdir(parents=True, exist_ok=True)
 
         # Get consensus time range for this session
         t_start, t_end = _get_session_time_range(df, ref_device, ses_num)
@@ -941,6 +940,9 @@ def matchcrop_by_sessions(
             results["errors"].append(msg)
             continue
 
+        # Session confirmed valid — now create the output directory
+        ses_dir.mkdir(parents=True, exist_ok=True)
+
         print(f"  [{ses_bids}] Time range: {t_start:.3f}s - {t_end:.3f}s")
 
         ses_result: Dict[str, Any] = {
@@ -954,7 +956,6 @@ def matchcrop_by_sessions(
                 device_ses_dir = output_root / device / f"subject-{subject_id}" / ses_bids
             else:
                 device_ses_dir = ses_dir
-            device_ses_dir.mkdir(parents=True, exist_ok=True)
 
             device_type = detect_device_type(device)
             shift = shifts.get(device, 0.0)
@@ -1011,6 +1012,9 @@ def matchcrop_by_sessions(
                 ses_result["devices"][device] = {"status": "file_not_found", "reason": msg}
                 results["errors"].append(msg)
                 continue
+
+            # Device confirmed to have data — now create output directory
+            device_ses_dir.mkdir(parents=True, exist_ok=True)
 
             # Compute effective shift for this (device, session).
             #
