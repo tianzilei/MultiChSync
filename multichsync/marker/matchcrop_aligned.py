@@ -1068,9 +1068,17 @@ def matchcrop_by_sessions(
             # e.g. "sub-100_ses-01_task-rest_fnirs.snirf"
             #   → "sub-100_ses-01_task-rest_fnirs.snirf" (task rename)
             #   → "sub-100_ses-05_task-rest_fnirs.snirf" (session rename to match ref)
-            final_bids_stem = rename_bids_task(
-                converted_file.stem, old_taskname, taskname or old_taskname
-            )
+            # In device mode, each device keeps its own original task name
+            # (extracted from the converted file) instead of a unified global task.
+            if output_mode == "device":
+                device_old_task = extract_taskname_from_filename(converted_file.stem) or old_taskname
+                final_bids_stem = rename_bids_task(
+                    converted_file.stem, device_old_task, taskname or device_old_task
+                )
+            else:
+                final_bids_stem = rename_bids_task(
+                    converted_file.stem, old_taskname, taskname or old_taskname
+                )
             # Replace session number with the reference session number
             # so all devices' output files use the same session ID
             final_bids_stem = rename_bids_session(final_bids_stem, ses_num)
@@ -1126,9 +1134,17 @@ def matchcrop_by_sessions(
                         device_ses_dir.mkdir(parents=True, exist_ok=True)
                         for ext in [".vhdr", ".vmrk", ".eeg"]:
                             for src in tmp_out.glob(f"*{ext}"):
-                                new_name = rename_bids_task(
-                                    src.name, old_taskname, taskname or old_taskname
-                                )
+                                # In device mode, each device keeps its own
+                                # original task name from the cropped file.
+                                if output_mode == "device":
+                                    device_old_task = extract_taskname_from_filename(src.name) or old_taskname
+                                    new_name = rename_bids_task(
+                                        src.name, device_old_task, taskname or device_old_task
+                                    )
+                                else:
+                                    new_name = rename_bids_task(
+                                        src.name, old_taskname, taskname or old_taskname
+                                    )
                                 # Also replace session number to match reference
                                 new_name = rename_bids_session(new_name, ses_num)
                                 dst = device_ses_dir / new_name
@@ -1164,13 +1180,6 @@ def matchcrop_by_sessions(
         ses_result["stats"] = {"ok": n_ok, "copied_asis": n_copy,
                                "skipped": n_skip, "failed": n_fail}
 
-         # Determine where to save session artifacts (metadata, figure)
-        if output_mode == "device":
-            ses_artifacts_dir = output_root / ref_device / f"subject-{subject_id}" / ses_bids
-        else:
-            ses_artifacts_dir = ses_dir
-        ses_artifacts_dir.mkdir(parents=True, exist_ok=True)
-
         ses_meta = {
             "subject_id": subject_id,
             "session": ses_bids,
@@ -1181,27 +1190,40 @@ def matchcrop_by_sessions(
                 for d in ses_result["devices"]
             },
         }
-        meta_path = ses_artifacts_dir / "crop_metadata.json"
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(ses_meta, f, indent=2)
 
-        # Save crop timeline figure (shows the crop window overlaid)
-        try:
-            fig_path = ses_artifacts_dir / f"crop_timeline_{ses_bids}.png"
-            _save_crop_timeline_figure(
-                df=df,
-                devices=all_devices,
-                ref_device=ref_device,
-                anchor=anchor,
-                subject_id=subject_id,
-                session_num=ses_num,
-                t_start=t_start,
-                t_end=t_end,
-                shifts=shifts,
-                output_path=fig_path,
-            )
-        except Exception as e:
-            print(f"    Warning: could not save crop timeline figure ({e})")
+        # ── Save session artifacts (crop_metadata.json + timeline figure) ──
+        # In subject mode, save once under ses_dir.
+        # In device mode, save a copy to EVERY device's output directory.
+        if output_mode == "device":
+            artifact_dirs = [
+                output_root / d / f"subject-{subject_id}" / ses_bids
+                for d in all_devices
+            ]
+        else:
+            artifact_dirs = [ses_dir]
+
+        for art_dir in artifact_dirs:
+            art_dir.mkdir(parents=True, exist_ok=True)
+            meta_path = art_dir / "crop_metadata.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(ses_meta, f, indent=2)
+
+            try:
+                fig_path = art_dir / f"crop_timeline_{ses_bids}.png"
+                _save_crop_timeline_figure(
+                    df=df,
+                    devices=all_devices,
+                    ref_device=ref_device,
+                    anchor=anchor,
+                    subject_id=subject_id,
+                    session_num=ses_num,
+                    t_start=t_start,
+                    t_end=t_end,
+                    shifts=shifts,
+                    output_path=fig_path,
+                )
+            except Exception as e:
+                print(f"    Warning: could not save crop timeline figure ({e})")
 
         results["sessions"][ses_bids] = ses_result
 
