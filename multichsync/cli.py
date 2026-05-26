@@ -529,6 +529,7 @@ def marker_matchcrop(args):
                 matching_dir=args.input_dir,
                 output_dir=args.output_dir or "Data/matchcrop",
                 convert_base_dir="Data/convert",
+                output_mode=args.output_mode,
             )
             print(f"\nBatch matchcrop complete!")
             print(f"  Subjects processed: {len(result)}")
@@ -549,6 +550,7 @@ def marker_matchcrop(args):
                 json_path=json_path,
                 output_dir=output_dir,
                 convert_base_dir="Data/convert",
+                output_mode=args.output_mode,
             )
             print(f"\nMatchCrop complete!")
             print(f"  Subject: {result.get('subject_id', '?')}")
@@ -1517,6 +1519,12 @@ Examples:
         type=float,
         default=None,
         help="裁剪结束时间（共识时间轴，不指定时自动按session切分）",
+    )
+    marker_matchcrop_parser.add_argument(
+        "--output-mode",
+        choices=["subject", "device"],
+        default="subject",
+        help="Output directory structure: 'subject' (default, subject-{id}/ses-{N}/) or 'device' (device/subject-{id}/ses-{N}/)",
     )
     marker_matchcrop_parser.set_defaults(func=marker_matchcrop)
 
