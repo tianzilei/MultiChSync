@@ -107,36 +107,45 @@ def crop_ecg_data(
             time_col = col
             break
 
-    # If time column not found, might be headerless CSV
+    # If time column not found, determine if the CSV is headerless
+    # or has proper headers but no time column (e.g. Biopac ACQ conversion
+    # output with channel columns like "ECG100", "EDA").
     if time_col is None:
-        # Check if first row looks like numeric data (headerless case)
-        # If all values in first row are numeric, it's likely headerless
         first_row = df.iloc[0]
         first_row_numeric = pd.to_numeric(first_row, errors="coerce").notna().all()
 
         if first_row_numeric:
-            # Re-read with header=None and assign column names
-            warnings.warn(
-                f"CSV file '{input_file.name}' appears to have no header row. "
-                f"Auto-assigning column names. If this is incorrect, "
-                f"please ensure the CSV has a header row.",
-                UserWarning,
-            )
-
-            # Re-read without header
-            df = pd.read_csv(input_file, header=None)
-
-            # Assign default column names based on common ECG format
-            # Assume: time, ECG channel 1, ECG channel 2, ... (or detect from ncols)
-            n_cols = len(df.columns)
-            if n_cols >= 1:
-                col_names = ["Time(sec)"] + [f"CH{i}" for i in range(1, n_cols)]
-                df.columns = col_names
-                time_col = "Time(sec)"
-            else:
-                raise ValueError(
-                    f"Cannot determine column structure for CSV: {input_file}"
+            # First data row is numeric.  Check whether column names are
+            # stringified numbers (headerless CSV) or real channel names.
+            col_is_numeric = pd.to_numeric(df.columns, errors="coerce").notna()
+            if col_is_numeric.all():
+                # Truly headerless — re-read with header=None
+                warnings.warn(
+                    f"CSV file '{input_file.name}' appears to have no header row. "
+                    f"Auto-assigning column names. If this is incorrect, "
+                    f"please ensure the CSV has a header row.",
+                    UserWarning,
                 )
+
+                df = pd.read_csv(input_file, header=None)
+
+                n_cols = len(df.columns)
+                if n_cols >= 1:
+                    col_names = ["Time(sec)"] + [f"CH{i}" for i in range(1, n_cols)]
+                    df.columns = col_names
+                    time_col = "Time(sec)"
+                else:
+                    raise ValueError(
+                        f"Cannot determine column structure for CSV: {input_file}"
+                    )
+            else:
+                # CSV has proper column names (e.g. "ECG100", "EDA") but no
+                # recognised time column.  Generate a synthetic "Time(sec)"
+                # column from the row index using the default sampling rate
+                # (250 Hz, the Biopac batch-converter default).
+                sr = 250.0
+                df["Time(sec)"] = df.index.astype(float) / sr
+                time_col = "Time(sec)"
         else:
             # First row has non-numeric values - might be actual header
             # Try again with the first row as header (might have different column names)
