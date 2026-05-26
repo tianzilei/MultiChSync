@@ -137,6 +137,24 @@ def rename_bids_task(filename: str, old_taskname: str, new_taskname: str) -> str
     return re.sub(pattern, replacement, filename)
 
 
+def set_bids_taskname(filename: str, new_taskname: str) -> str:
+    """Unconditionally replace any BIDS task name in *filename*.
+
+    Unlike :func:`rename_bids_task`, this does NOT require the old task
+    name to match — it replaces **any** ``_task-XXX`` with
+    ``_task-{new_taskname}``.  This guarantees all output files end up
+    with the same unified task name regardless of each device's original
+    task name.
+
+    Example: ``'sub-068_ses-01_task-rest_fnirs.snirf'`` with
+             ``new_taskname='RC'`` → ``'sub-068_ses-01_task-RC_fnirs.snirf'``
+
+    Example: ``'sub-045_ses-01_task-RC_ecg.csv'`` with
+             ``new_taskname='RC'`` → ``'sub-045_ses-01_task-RC_ecg.csv'``
+    """
+    return re.sub(r"_task-[^_.]+", f"_task-{new_taskname}", filename)
+
+
 def rename_bids_session(filename: str, new_session: int) -> str:
     """
     Rename BIDS session number in filename to match a new session.
@@ -1095,9 +1113,11 @@ def matchcrop_by_sessions(
             #   → "sub-100_ses-05_task-rest_fnirs.snirf" (session rename to match ref)
             # All devices use the unified global task name so that files from
             # the same reference session share the same task and session ID.
-            final_bids_stem = rename_bids_task(
-                converted_file.stem, old_taskname, taskname or old_taskname
-            )
+            # We replace *any* task name unconditionally (set_bids_taskname)
+            # instead of renaming from old→new, because devices may have
+            # different original task names in their converted files.
+            global_task = taskname or old_taskname
+            final_bids_stem = set_bids_taskname(converted_file.stem, global_task)
             # Replace session number with the reference session number
             # so all devices' output files use the same session ID
             final_bids_stem = rename_bids_session(final_bids_stem, ses_num)
@@ -1153,9 +1173,7 @@ def matchcrop_by_sessions(
                         device_ses_dir.mkdir(parents=True, exist_ok=True)
                         for ext in [".vhdr", ".vmrk", ".eeg"]:
                             for src in tmp_out.glob(f"*{ext}"):
-                                new_name = rename_bids_task(
-                                    src.name, old_taskname, taskname or old_taskname
-                                )
+                                new_name = set_bids_taskname(src.name, global_task)
                                 # Also replace session number to match reference
                                 new_name = rename_bids_session(new_name, ses_num)
                                 dst = device_ses_dir / new_name
