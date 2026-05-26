@@ -959,8 +959,10 @@ def matchcrop_by_sessions(
             results["errors"].append(msg)
             continue
 
-        # Session confirmed valid — now create the output directory
-        ses_dir.mkdir(parents=True, exist_ok=True)
+        # Session confirmed valid — create the output directory (subject mode only;
+        # device mode uses per-device nested dirs created in the device loop below).
+        if output_mode != "device":
+            ses_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"  [{ses_bids}] Time range: {t_start:.3f}s - {t_end:.3f}s")
 
