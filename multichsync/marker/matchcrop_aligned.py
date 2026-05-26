@@ -989,6 +989,26 @@ def matchcrop_by_sessions(
             "devices": {},
         }
 
+        # ── Determine session-specific task name ─────────────────────
+        # Extract the task name from the reference device's converted
+        # file for THIS session, so each session keeps its own original
+        # task rather than using a single global task for all sessions.
+        if taskname:
+            session_task = taskname  # user override
+        else:
+            _ref_converted = _find_converted_file(
+                subject_id, ref_type, ses_num,
+                convert_base_dir=convert_base_dir,
+            )
+            if _ref_converted is not None:
+                session_task = extract_taskname_from_filename(_ref_converted.stem)
+            else:
+                session_task = None
+        if not session_task:
+            session_task = old_taskname  # fallback to global old task
+
+        print(f"  [{ses_bids}] Task: {session_task}")
+
         for device in all_devices:
             # ── Device-specific output directory ──
             if output_mode == "device":
@@ -1116,7 +1136,7 @@ def matchcrop_by_sessions(
             # We replace *any* task name unconditionally (set_bids_taskname)
             # instead of renaming from old→new, because devices may have
             # different original task names in their converted files.
-            global_task = taskname or old_taskname
+            global_task = session_task
             final_bids_stem = set_bids_taskname(converted_file.stem, global_task)
             # Replace session number with the reference session number
             # so all devices' output files use the same session ID
