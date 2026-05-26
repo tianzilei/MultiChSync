@@ -175,13 +175,20 @@ multichsync marker manual-match --input-files *BIDS*_fnirs *BIDS*_ecg *BIDS*_eeg
 # auto-detects taskname from the original BIDS filenames, and saves
 # per-session output.  Devices that can't be time-cropped (e.g. short
 # eeg sessions) are copied as-is so every device has output.
-#   Data/matchcrop/subject-{id}/ses-{N}/sub-{id}_ses-{N}_task-{auto}_{type}.ext
+
+# Subject mode (default): Data/matchcrop/subject-{id}/ses-{N}/...
 multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
+
+# Device mode:         Data/matchcrop/{device}/subject-{id}/ses-{N}/...
+multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop --output-mode device
 
 # ── Mode B: Single subject, auto per-session split ──────────────────
 # No --start-time / --end-time / --taskname needed — all auto-detected.
 # Reference device = device with most sessions (falls back if shift >1000s).
 multichsync marker matchcrop --json-path Data/matching/basematched_subject-001_metadata.json
+
+# With device output mode:
+multichsync marker matchcrop --json-path Data/matching/basematched_subject-001_metadata.json --output-mode device
 
 # ── Mode C: Legacy continuous crop (requires start/end) ─────────────
 multichsync marker matchcrop --json-path Data/matching/traversal_matched_subject-001_metadata.json --start-time 0.0 --end-time 300.0
@@ -228,6 +235,7 @@ multichsync marker basematch --timeline-dir Data/marker/info
 
 # 5. Crop by session (auto‑detects ref device, taskname; copies short files as‑is)
 multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
+# Use --output-mode device to nest by device: {output_dir}/{device}/subject-{id}/ses-{N}/
 
 # 6. Quality assessment
 multichsync quality batch --input-dir Data/convert/fnirs --output-dir Data/quality
@@ -295,6 +303,9 @@ multichsync marker matchcrop --json-path Data/matching/basematched_subject-001_m
 
 # Batch crop by sessions — scans matching dir, auto-detects everything
 multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop
+
+# Batch crop, device output mode: Data/matchcrop/{device}/subject-{id}/ses-{N}/...
+multichsync marker matchcrop --input-dir Data/matching --output-dir Data/matchcrop --output-mode device
 
 # Legacy continuous crop (requires --start-time / --end-time)
 multichsync marker matchcrop --json-path Data/matching/matched_metadata.json --start-time 0.0 --end-time 300.0
@@ -542,6 +553,14 @@ for ses, sres in result["sessions"].items():
         status = dres["status"]  # "ok" | "copied_asis" | "skipped_*" | "error"
         print(f"  {ses}/{dev}: {status}")
 
+# Device output mode nests files under device name:
+#   Data/matchcrop/fnirs/subject-{id}/ses-{N}/...
+result = matchcrop_by_sessions(
+    json_path="Data/matching/basematched_subject-001_metadata.json",
+    output_dir="Data/matchcrop",
+    output_mode="device",
+)
+
 # ── Batch processing all subjects ────────────────────────────────────
 from multichsync.marker.matchcrop_aligned import batch_matchcrop_from_matching_dir
 
@@ -551,6 +570,13 @@ results = batch_matchcrop_from_matching_dir(
 )
 # Batch report at Data/matchcrop/crop_report.json contains:
 #   devices_ok, devices_copied, devices_skipped, devices_failed
+
+# With device output mode:
+results = batch_matchcrop_from_matching_dir(
+    matching_dir="Data/matching",
+    output_dir="Data/matchcrop",
+    output_mode="device",
+)
 
 # ── Legacy continuous crop (requires start/end) ─────────────────────
 from multichsync.marker.matchcrop_aligned import matchcrop_aligned
@@ -617,6 +643,7 @@ Data/
 │   └── info/         # Subject reports + timeline figures + alignment JSONs
 ├── matching/         # Cross-device matching results
 ├── matchcrop/        # Per-session device data (cropped or copied as-is)
+│   │                   # Subject mode (default):
 │   ├── subject-{id}/
 │   │   ├── ses-01/
 │   │   │   ├── sub-{id}_ses-01_task-{task}_fnirs.snirf
@@ -626,6 +653,16 @@ Data/
 │   │   │   ├── sub-{id}_ses-01_task-{task}_eeg.eeg
 │   │   │   └── crop_metadata.json
 │   │   └── ses-02/ ...
+│   │                   # Device mode (--output-mode device):
+│   ├── fnirs/
+│   │   └── subject-{id}/
+│   │       └── ses-01/
+│   │           ├── sub-{id}_ses-01_task-{task}_fnirs.snirf
+│   │           └── ...
+│   ├── eeg/
+│   │   └── subject-{id}/
+│   │       └── ses-01/
+│   │           └── ...
 │   └── crop_report.json
 └── quality/          # fNIRS quality reports
 ```
