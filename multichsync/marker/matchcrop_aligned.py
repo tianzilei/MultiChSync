@@ -441,7 +441,8 @@ def _find_device_session_for_ref(df: pd.DataFrame,
 
 def _old_taskname_from_metadata(metadata: Dict, devices: List[str],
                                 subject_id: str = "",
-                                convert_base_dir: str = "Data/convert") -> str:
+                                convert_base_dir: str = "Data/convert",
+                                ref_device: str = "") -> str:
     """Extract the original task name from metadata or files.
 
     Strategies in order:
@@ -449,8 +450,15 @@ def _old_taskname_from_metadata(metadata: Dict, devices: List[str],
     2. From ``device_info[].converted_data_file_path`` (rich metadata).
     3. From an actual converted file in ``Data/convert/{type}/``.
     4. Fall back to ``"rest"``.
+
+    When *ref_device* is given the task from the reference device is
+    preferred so that all output files share a unified task name.
     """
-    # Strategy 1: BIDS pattern in device names
+    # Strategy 1: BIDS pattern in device names — prefer ref_device
+    if ref_device:
+        tn = extract_taskname_from_filename(ref_device)
+        if tn:
+            return tn
     for dev in devices:
         tn = extract_taskname_from_filename(dev)
         if tn:
@@ -463,10 +471,20 @@ def _old_taskname_from_metadata(metadata: Dict, devices: List[str],
         if tn:
             return tn
 
-    # Strategy 3: scan actual files in convert directory
+    # Strategy 3: scan actual files in convert directory — prefer ref type
     if subject_id:
         base = Path(convert_base_dir)
+        ref_type = detect_device_type(ref_device) if ref_device else ""
+        ordered = []
+        if ref_type:
+            ref_dir_map = {"fnirs": "fnirs", "ecg": "ECG", "eeg": "EEG"}
+            ref_dir = ref_dir_map.get(ref_type)
+            if ref_dir:
+                ordered.append(ref_dir)
         for sub_dir in ["fnirs", "ECG", "EEG"]:
+            if sub_dir not in ordered:
+                ordered.append(sub_dir)
+        for sub_dir in ordered:
             d = base / sub_dir
             if d.exists():
                 for f in sorted(d.glob(f"sub-{subject_id}_*")):
@@ -848,7 +866,8 @@ def matchcrop_by_sessions(
     # ── 6. Extract old task name ──────────────────────────────────────
     old_taskname = _old_taskname_from_metadata(metadata, all_devices,
                                                subject_id=subject_id,
-                                               convert_base_dir=convert_base_dir)
+                                               convert_base_dir=convert_base_dir,
+                                               ref_device=ref_device)
 
     # ── 7. Build reference session list ───────────────────────────────
     # Include both marker-bearing sessions from stacked_timeline AND
