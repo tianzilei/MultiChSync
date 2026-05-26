@@ -1072,17 +1072,11 @@ def matchcrop_by_sessions(
             # e.g. "sub-100_ses-01_task-rest_fnirs.snirf"
             #   → "sub-100_ses-01_task-rest_fnirs.snirf" (task rename)
             #   → "sub-100_ses-05_task-rest_fnirs.snirf" (session rename to match ref)
-            # In device mode, each device keeps its own original task name
-            # (extracted from the converted file) instead of a unified global task.
-            if output_mode == "device":
-                device_old_task = extract_taskname_from_filename(converted_file.stem) or old_taskname
-                final_bids_stem = rename_bids_task(
-                    converted_file.stem, device_old_task, taskname or device_old_task
-                )
-            else:
-                final_bids_stem = rename_bids_task(
-                    converted_file.stem, old_taskname, taskname or old_taskname
-                )
+            # All devices use the unified global task name so that files from
+            # the same reference session share the same task and session ID.
+            final_bids_stem = rename_bids_task(
+                converted_file.stem, old_taskname, taskname or old_taskname
+            )
             # Replace session number with the reference session number
             # so all devices' output files use the same session ID
             final_bids_stem = rename_bids_session(final_bids_stem, ses_num)
@@ -1138,17 +1132,9 @@ def matchcrop_by_sessions(
                         device_ses_dir.mkdir(parents=True, exist_ok=True)
                         for ext in [".vhdr", ".vmrk", ".eeg"]:
                             for src in tmp_out.glob(f"*{ext}"):
-                                # In device mode, each device keeps its own
-                                # original task name from the cropped file.
-                                if output_mode == "device":
-                                    device_old_task = extract_taskname_from_filename(src.name) or old_taskname
-                                    new_name = rename_bids_task(
-                                        src.name, device_old_task, taskname or device_old_task
-                                    )
-                                else:
-                                    new_name = rename_bids_task(
-                                        src.name, old_taskname, taskname or old_taskname
-                                    )
+                                new_name = rename_bids_task(
+                                    src.name, old_taskname, taskname or old_taskname
+                                )
                                 # Also replace session number to match reference
                                 new_name = rename_bids_session(new_name, ses_num)
                                 dst = device_ses_dir / new_name
