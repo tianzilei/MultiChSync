@@ -560,13 +560,15 @@ def _save_crop_timeline_figure(
     shifts: Dict[str, float],
     output_path: Path,
     dpi: int = 150,
+    gap_info: Optional[Dict[str, Dict]] = None,
 ) -> None:
     """Save a timeline figure highlighting the crop window for one session.
 
-    Each device gets a horizontal track with:
-    - Coloured session bars (one colour per session).
+    Mirrors the basematch matched timeline style:
+    - Coloured session bars from gap_info (precise start/duration).
+    - Gray gap rectangles between sessions with Δ labels.
     - Filled circles for matched markers, hollow for gaps.
-    - A semi-transparent orange rectangle highlighting the crop range.
+    - Orange crop window overlay with dimmed discarded regions.
     - Session labels below the bars.
     """
     import matplotlib
@@ -584,6 +586,16 @@ def _save_crop_timeline_figure(
         tc = f"{dev}_stacked_time"
         if tc in df.columns:
             all_times.extend(df[tc].dropna().tolist())
+    # Also consider gap_info session boundaries
+    if gap_info:
+        for dev, gi in gap_info.items():
+            starts = gi.get("starts", [])
+            durs = gi.get("durations", [])
+            gaps = gi.get("gaps", [])
+            for i, s in enumerate(starts):
+                d = durs[i] if i < len(durs) else 0
+                g = gaps[i] if i < len(gaps) else 0
+                all_times.append(s + d + g)
     if not all_times:
         all_times = [0.0, 100.0]
     t_max = max(all_times) if all_times else 100.0
@@ -591,7 +603,7 @@ def _save_crop_timeline_figure(
     x_lo = 0.0
     x_hi = t_max + pad
 
-    fig_h = max(2.5, 1.6 * n_devices + 1.0)
+    fig_h = max(2.5, 1.8 * n_devices + 1.0)
     fig_w = min(max(10, (x_hi - x_lo) / 30 + 6), 28)
     fig, axes = plt.subplots(n_devices, 1, figsize=(fig_w, fig_h),
                              sharex=True, squeeze=False)
@@ -604,10 +616,9 @@ def _save_crop_timeline_figure(
         index_col = f"{dev}_index"
         session_col = f"{dev}_session"
 
-        # ── Gather markers (keep NaN so shapes match df rows) ────────
+        # ── Gather markers ────────────────────────────────────────────
         marker_times = df[stacked_col].values if stacked_col in df.columns else np.full(len(df), np.nan)
         marker_indices = df[index_col].values if index_col in df.columns else np.full(len(df), -1)
-        df[session_col].values if session_col in df.columns else np.full(len(df), np.nan)
 
         # Reference device stacked_time — fallback for gap x-positions
         ref_stacked = f"{ref_device}_stacked_time"
@@ -617,34 +628,118 @@ def _save_crop_timeline_figure(
         ax.axhline(y=0, xmin=0, xmax=1, color="#dddddd",
                    linewidth=2, alpha=0.3, zorder=0)
 
-        # ── Session bars from stacked_time boundaries ─────────────────
-        if session_col in df.columns and stacked_col in df.columns:
-            ses_boundaries: Dict[int, Tuple[float, float]] = {}
-            for ses in sorted(df[session_col].dropna().unique()):
-                ses = int(ses)
-                mask = df[session_col] == ses
-                if index_col in df.columns:
-                    mask = mask & (df[index_col].notna()) & (df[index_col] >= 0)
-                ses_times = df.loc[mask, stacked_col].dropna()
-                if len(ses_times) > 0:
-                    ses_boundaries[ses] = (float(ses_times.min()), float(ses_times.max()))
+        # ── Session bars & gaps from gap_info (same as matched timeline) ──
+        _gi = gap_info.get(dev) if gap_info else None
+        _s0: Dict[int, float] = {}
+        _s1: Dict[int, float] = {}
+        _sessions_labels: List[Dict] = []
 
-            for ses_i, (s_start, s_end) in sorted(ses_boundaries.items()):
-                dur = s_end - s_start
-                if dur < 0.5:
-                    dur = 0.5
-                ax.barh(0, dur, height=0.55, left=s_start,
-                        color=cmap_bar(ses_i % 10), alpha=0.85,
-                        edgecolor="#222222", linewidth=0.5, zorder=0)
+        if _gi is not None and "starts" in _gi:
+            # 4-tuple format from metadata: starts, gaps, durations, n_markers
+            _starts_list = _gi["starts"]
+            _gaps_list = _gi["gaps"]
+            _durs_list = _gi["durations"]
+            _nm_list = _gi["n_markers"]
+            for _si, (_ss, _dd, _gg, _nm) in enumerate(
+                zip(_starts_list, _durs_list, _gaps_list, _nm_list)
+            ):
+                if _dd > 0:
+                    _s0[_si] = _ss
+                    _s1[_si] = _ss + _dd
+                _sessions_labels.append({"nm": _nm})
+        elif _gi is not None and "gaps" in _gi:
+            # 3-tuple fallback: gaps, durations, n_markers
+            _gaps_list = _gi["gaps"]
+            _durs_list = _gi["durations"]
+            _nm_list = _gi["n_markers"]
+            _cum = 0.0
+            for _si, (_dd, _gg, _nm) in enumerate(
+                zip(_durs_list, _gaps_list, _nm_list)
+            ):
+                if _dd > 0:
+                    _s0[_si] = _cum
+                    _s1[_si] = _cum + _dd
+                _cum += _dd + _gg
+                _sessions_labels.append({"nm": _nm})
+        else:
+            # Fallback: use ref device's session boundaries from data
+            if session_col in df.columns and stacked_col in df.columns:
+                ref_stacked_col = f"{ref_device}_stacked_time"
+                ref_ses_col = f"{ref_device}_session"
+                if ref_stacked_col in df.columns and ref_ses_col in df.columns:
+                    for ses in sorted(df[ref_ses_col].dropna().unique()):
+                        ses = int(ses)
+                        mask_r = df[ref_ses_col] == ses
+                        ses_times_r = df.loc[mask_r, ref_stacked_col].dropna()
+                        if len(ses_times_r) > 0:
+                            _s0[ses] = float(ses_times_r.min())
+                            _s1[ses] = float(ses_times_r.max())
+                            _sessions_labels.append({"nm": 0})
 
-            # Session labels
-            for ses_i, (s_start, s_end) in sorted(ses_boundaries.items()):
-                cx = (s_start + s_end) / 2.0
-                ax.text(cx, -0.45, f"S{ses_i}",
+        # ── Draw session bars ─────────────────────────────────────────
+        if _s0:
+            _all_si = sorted(_s0.keys())
+            for _si in _all_si:
+                _l = _s0[_si]
+                _r = _s1.get(_si, _l)
+                if _r - _l < 0.5:
+                    _r = _l + 0.5
+                _seg_c = cmap_bar(_si % 10)
+                ax.barh(0, _r - _l, height=0.6, left=_l,
+                        color=_seg_c, alpha=0.85,
+                        edgecolor="#222222", linewidth=0.6, zorder=1)
+
+            # ── Gap rectangles (gray zones with Δ labels) ─────────────
+            if _gi is not None:
+                _starts_g = _gi.get("starts")
+                _gaps_g = _gi["gaps"]
+                _durs_g = _gi["durations"]
+                if _starts_g:
+                    for _si, (_ss, _dd, _gg) in enumerate(
+                        zip(_starts_g, _durs_g, _gaps_g)
+                    ):
+                        if _gg > 0.5:
+                            _gl = _ss + _dd
+                            _gr = _gl + _gg
+                            ax.axvspan(_gl, _gr, ymin=0.15, ymax=0.85,
+                                       color="#cccccc", alpha=0.4, zorder=0)
+                            ax.text((_gl + _gr) / 2, 0,
+                                    f"\u0394{_gg:.0f}s", ha="center", va="center",
+                                    fontsize=4.5, color="#666666", style="italic")
+                else:
+                    _cum_g = 0.0
+                    for _dd, _gg in zip(_durs_g, _gaps_g):
+                        _cum_g += _dd
+                        if _gg > 0.5:
+                            _gl = _cum_g
+                            _gr = _cum_g + _gg
+                            ax.axvspan(_gl, _gr, ymin=0.15, ymax=0.85,
+                                       color="#cccccc", alpha=0.4, zorder=0)
+                            ax.text((_gl + _gr) / 2, 0,
+                                    f"\u0394{_gg:.0f}s", ha="center", va="center",
+                                    fontsize=4.5, color="#666666", style="italic")
+                        _cum_g += _gg
+
+            # ── Session boundary lines ────────────────────────────────
+            for _i in range(len(_all_si) - 1):
+                _sep = (_s1[_all_si[_i]] + _s0[_all_si[_i + 1]]) / 2.0
+                ax.axvline(x=_sep, ymin=0.2, ymax=0.8,
+                           color="#333333", linewidth=0.6,
+                           linestyle="-", zorder=2)
+
+            # ── Session labels below ──────────────────────────────────
+            for _si in _all_si:
+                _cx = (_s0[_si] + _s1.get(_si, _s0[_si])) / 2.0
+                _nm_s = _sessions_labels[_si]["nm"] if _si < len(_sessions_labels) else 0
+                _label = f"S{_si+1}"
+                if _nm_s == 0:
+                    _label += "(g)"
+                ax.text(_cx, -0.55, _label,
                         ha="center", fontsize=4.5, color="#444444",
-                        fontweight="bold")
+                        fontweight="bold",
+                        style="italic" if _nm_s == 0 else "normal")
 
-        # ── Matched markers (filled) ──────────────────────────────────
+        # ── Matched markers (filled circles) ──────────────────────────
         has_index_col = index_col in df.columns
         if has_index_col:
             matched_mask = marker_indices >= 0
@@ -653,11 +748,9 @@ def _save_crop_timeline_figure(
             if len(matched_times) > 0:
                 ax.scatter(matched_times, np.zeros_like(matched_times),
                            marker="o", s=8, color=color, edgecolors="white",
-                           linewidths=0.2, zorder=3, alpha=0.7)
+                           linewidths=0.2, zorder=5, alpha=0.7)
 
             # ── Gap markers (hollow, at ref positions) ────────────────
-            # device_stacked_time is NaN for gaps, so use reference
-            # device's stacked_time as the x‑position fallback.
             gap_mask = marker_indices == -1
             gap_times = ref_times[gap_mask]
             gap_times = gap_times[~np.isnan(gap_times)]
@@ -665,13 +758,23 @@ def _save_crop_timeline_figure(
                 ax.scatter(gap_times, np.zeros_like(gap_times),
                            marker="o", s=6, facecolors="none",
                            edgecolors=color, linewidths=0.5, alpha=0.4,
-                           zorder=3)
+                           zorder=5)
 
-        # ── Crop window highlight ─────────────────────────────────────
+        # ── Crop window + dimmed discarded regions ────────────────────
         crop_dur = t_end - t_start
         if crop_dur > 0:
-            ax.axvspan(t_start, t_end, ymin=0.1, ymax=0.9,
-                       color="orange", alpha=0.2, zorder=4)
+            # Dim the regions OUTSIDE the crop window
+            if t_start > x_lo:
+                ax.axvspan(x_lo, t_start, ymin=0.0, ymax=1.0,
+                           color="#000000", alpha=0.12, zorder=6)
+            if t_end < x_hi:
+                ax.axvspan(t_end, x_hi, ymin=0.0, ymax=1.0,
+                           color="#000000", alpha=0.12, zorder=6)
+            # Crop boundary lines (solid orange)
+            ax.axvline(x=t_start, color="#E65100", linewidth=1.5,
+                       linestyle="--", zorder=7, alpha=0.8)
+            ax.axvline(x=t_end, color="#E65100", linewidth=1.5,
+                       linestyle="--", zorder=7, alpha=0.8)
 
         # ── Per-device match count ────────────────────────────────────
         n_matched = int(np.sum(marker_indices >= 0)) if len(marker_indices) == len(df) else 0
@@ -683,11 +786,11 @@ def _save_crop_timeline_figure(
 
         # ── Axis styling ──────────────────────────────────────────────
         ax.set_xlim(x_lo, x_hi)
-        ax.set_ylim(-0.55, 0.65)
+        ax.set_ylim(-0.6, 0.7)
         ax.set_yticks([0])
         label = dev.upper()
         if is_ref:
-            label += " ★REF"
+            label += " \u2605REF"
         ax.set_yticklabels([label], fontsize=9,
                            fontweight="bold" if is_ref else "normal",
                            color=color)
@@ -702,7 +805,8 @@ def _save_crop_timeline_figure(
     ses_bids = f"ses-{session_num:02d}"
     axes[-1][0].set_xlabel("Time (seconds)", fontsize=9)
     fig.suptitle(
-        f"Subject {subject_id} — {ses_bids}  |  crop: [{t_start:.1f}s, {t_end:.1f}s]\n"
+        f"Subject {subject_id} \u2014 {ses_bids}  |  "
+        f"crop: [{t_start:.1f}s, {t_end:.1f}s] ({t_end - t_start:.1f}s)\n"
         f"ref: {ref_device}  |  anchor: {anchor}",
         fontsize=11, fontweight="bold", y=0.97,
     )
@@ -712,17 +816,20 @@ def _save_crop_timeline_figure(
                    markersize=5, label="Matched marker"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="none",
                    markeredgecolor="#555555", markersize=4, label="Gap"),
-        plt.Rectangle((0, 0), 1, 1, color="orange", alpha=0.3, label="Crop window"),
+        plt.Rectangle((0, 0), 1, 1, color="#cccccc", alpha=0.4, label="Gap region"),
+        plt.Line2D([0], [0], color="#E65100", linewidth=1.5, linestyle="--",
+                   label="Crop boundary"),
+        plt.Rectangle((0, 0), 1, 1, color="#000000", alpha=0.12, label="Discarded"),
     ]
     fig.legend(handles=legend_elements, loc="lower center",
-               ncol=3, frameon=True, fontsize=7,
+               ncol=5, frameon=True, fontsize=7,
                bbox_to_anchor=(0.5, -0.02))
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.93])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
-    print(f"    Saved crop timeline → {output_path.name}")
+    print(f"    Saved crop timeline \u2192 {output_path.name}")
 
 
 def _copy_file_to_output(
@@ -1253,6 +1360,7 @@ def matchcrop_by_sessions(
                     t_end=t_end,
                     shifts=shifts,
                     output_path=fig_path,
+                    gap_info=metadata.get("gap_info"),
                 )
             except Exception as e:
                 print(f"    Warning: could not save crop timeline figure ({e})")
