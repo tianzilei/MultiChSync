@@ -4,14 +4,14 @@ Unit tests for fNIRS writer functions.
 Tests the write_snirf function and helper functions from multichsync.fnirs.writer.
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
+
 import h5py
+import numpy as np
 
 from multichsync.fnirs.writer import (
-    build_stim_from_mark,
     build_aux_numeric_series,
+    build_stim_from_mark,
     write_snirf,
 )
 

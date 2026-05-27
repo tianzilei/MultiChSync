@@ -7,9 +7,7 @@ Tests import from multichsync.marker.matcher:
 - EnhancedTimeline (adapted from MultiDeviceTimeline per plan)
 """
 
-import pytest
 import numpy as np
-from pathlib import Path
 
 
 class TestMatchEventsWithConfidence:
@@ -92,7 +90,7 @@ class TestEnhancedTimeline:
 
     def test_add_reference_device(self):
         """Test adding reference device."""
-        from multichsync.marker.matcher import EnhancedTimeline, DeviceInfo
+        from multichsync.marker.matcher import DeviceInfo, EnhancedTimeline
 
         # Create a reference device
         ref_device = DeviceInfo(
@@ -112,7 +110,7 @@ class TestEnhancedTimeline:
 
     def test_add_secondary_device(self):
         """Test adding secondary device and matching."""
-        from multichsync.marker.matcher import EnhancedTimeline, DeviceInfo
+        from multichsync.marker.matcher import DeviceInfo, EnhancedTimeline
 
         # Create reference device
         ref_device = DeviceInfo(
@@ -148,7 +146,7 @@ class TestEnhancedTimeline:
 
     def test_empty_events(self):
         """Test handling of empty event list."""
-        from multichsync.marker.matcher import EnhancedTimeline, DeviceInfo
+        from multichsync.marker.matcher import DeviceInfo, EnhancedTimeline
 
         # Create a reference device with empty events
         ref_device = DeviceInfo(

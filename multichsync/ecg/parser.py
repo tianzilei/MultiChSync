@@ -5,9 +5,10 @@ ACQ文件解析器
 
 import os
 import re
-import pandas as pd
+from typing import Dict, List, Optional
+
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union
+import pandas as pd
 
 try:
     import bioread
@@ -25,12 +26,12 @@ except ImportError:
 def normalize_name(name: str) -> str:
     """
     标准化列名
-    
+
     Parameters
     ----------
     name : str
         原始列名
-        
+
     Returns
     -------
     str
@@ -45,14 +46,14 @@ def normalize_name(name: str) -> str:
 def parse_acq_file(acq_path: str, sampling_rate: Optional[int] = None) -> Dict:
     """
     解析ACQ文件，返回数据字典
-    
+
     Parameters
     ----------
     acq_path : str
         ACQ文件路径
     sampling_rate : int, optional
         目标采样率（Hz），如果为None则保持原始采样率
-        
+
     Returns
     -------
     dict
@@ -66,7 +67,7 @@ def parse_acq_file(acq_path: str, sampling_rate: Optional[int] = None) -> Dict:
     """
     if not os.path.exists(acq_path):
         raise FileNotFoundError(f"ACQ文件不存在: {acq_path}")
-    
+
     # Prefer bioread, then neurokit2
     if BIOREAD_AVAILABLE:
         return _parse_with_bioread(acq_path, sampling_rate)
@@ -81,11 +82,11 @@ def _parse_with_bioread(acq_path: str, sampling_rate: Optional[int] = None) -> D
     使用bioread库解析ACQ文件
     """
     data = bioread.read(acq_path)
-    
+
     # Get channel info
     channels = []
     channel_data = {}
-    
+
     for i, ch in enumerate(data.channels):
         channel_name = ch.name if ch.name else f"Channel_{i+1}"
         channel_info = {
@@ -99,23 +100,23 @@ def _parse_with_bioread(acq_path: str, sampling_rate: Optional[int] = None) -> D
         }
         channels.append(channel_info)
         channel_data[channel_name] = ch.data
-    
+
     # Create DataFrame
     df = pd.DataFrame(channel_data)
-    
+
     # Determine original sampling rate (assume all channels have same rate)
     original_sr = data.channels[0].samples_per_second if data.channels else 1000
-    
+
     # Resample
     if sampling_rate and sampling_rate != original_sr:
         df = _resample_data(df, original_sr, sampling_rate)
         final_sr = sampling_rate
     else:
         final_sr = original_sr
-    
+
     # Calculate duration
     duration = len(df) / final_sr if len(df) > 0 else 0
-    
+
     return {
         'data': df,
         'channels': channels,
@@ -138,8 +139,8 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
     try:
         data, original_sr = nk.read_acqknowledge(acq_path)
     except Exception as e:
-        raise ValueError(f"使用neurokit2读取ACQ文件失败: {e}")
-    
+        raise ValueError(f"使用neurokit2读取ACQ文件失败: {e}") from e
+
     # Get channel info
     channels = []
     for col in data.columns:
@@ -153,7 +154,7 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
             'units': 'unknown'
         }
         channels.append(channel_info)
-    
+
     # Resample
     if sampling_rate and sampling_rate != original_sr:
         resampled = {}
@@ -169,10 +170,10 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
     else:
         df = data.copy()
         final_sr = original_sr
-    
+
     # Calculate duration
     duration = len(df) / final_sr if len(df) > 0 else 0
-    
+
     return {
         'data': df,
         'channels': channels,
@@ -191,7 +192,7 @@ def _parse_with_neurokit2(acq_path: str, sampling_rate: Optional[int] = None) ->
 def _resample_data(df: pd.DataFrame, original_sr: int, target_sr: int) -> pd.DataFrame:
     """
     使用简单线性插值进行重采样
-    
+
     Parameters
     ----------
     df : DataFrame
@@ -200,7 +201,7 @@ def _resample_data(df: pd.DataFrame, original_sr: int, target_sr: int) -> pd.Dat
         原始采样率
     target_sr : int
         目标采样率
-        
+
     Returns
     -------
     DataFrame
@@ -208,31 +209,31 @@ def _resample_data(df: pd.DataFrame, original_sr: int, target_sr: int) -> pd.Dat
     """
     if original_sr == target_sr:
         return df.copy()
-    
+
     # Calculate new time points
     original_length = len(df)
     original_times = np.arange(original_length) / original_sr
     target_length = int(original_length * target_sr / original_sr)
     target_times = np.arange(target_length) / target_sr
-    
+
     # Interpolate each channel
     resampled_data = {}
     for col in df.columns:
         # Linear interpolation
         resampled_data[col] = np.interp(target_times, original_times, df[col].values)
-    
+
     return pd.DataFrame(resampled_data)
 
 
 def get_channel_info(acq_path: str) -> List[Dict]:
     """
     获取ACQ文件的通道信息
-    
+
     Parameters
     ----------
     acq_path : str
         ACQ文件路径
-        
+
     Returns
     -------
     list
@@ -245,18 +246,18 @@ def get_channel_info(acq_path: str) -> List[Dict]:
 def group_channels_by_type(channels: List[Dict]) -> Dict[str, List[str]]:
     """
     根据通道名称分组
-    
+
     Parameters
     ----------
     channels : list
         通道信息列表
-        
+
     Returns
     -------
     dict
         分组后的通道字典
         - 'ecg': ECG相关通道
-        - 'eeg': EEG相关通道  
+        - 'eeg': EEG相关通道
         - 'egg': EGG相关通道
         - 'input': 输入通道
         - 'other': 其他通道
@@ -268,10 +269,10 @@ def group_channels_by_type(channels: List[Dict]) -> Dict[str, List[str]]:
         'input': [],
         'other': []
     }
-    
+
     for ch in channels:
         normalized = ch['normalized_name']
-        
+
         if 'ecg' in normalized:
             grouped['ecg'].append(ch['name'])
         elif 'eeg' in normalized:
@@ -282,5 +283,5 @@ def group_channels_by_type(channels: List[Dict]) -> Dict[str, List[str]]:
             grouped['input'].append(ch['name'])
         else:
             grouped['other'].append(ch['name'])
-    
+
     return grouped

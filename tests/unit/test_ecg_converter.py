@@ -6,9 +6,8 @@ Tests import from:
 - multichsync.ecg.batch (batch_convert_acq_to_csv)
 """
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -148,7 +147,7 @@ class TestConvertAcqToCsv:
             assert Path(result).exists()
 
             # Read file to verify format
-            with open(result, "r") as f:
+            with open(result) as f:
                 content = f.read()
                 # Should have fewer decimal places with "%.2f"
                 assert "," in content  # Valid CSV

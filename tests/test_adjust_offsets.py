@@ -18,9 +18,9 @@ from multichsync.marker.adjust_offsets import (
     adjust_offsets,
     generate_diff_report,
     load_and_adjust_metadata,
-    parse_offset_spec,
-    parse_offset_list,
     map_offset_list_to_devices,
+    parse_offset_list,
+    parse_offset_spec,
     rebuild_timeline,
 )
 
@@ -730,7 +730,7 @@ class TestAdjustOffsets(unittest.TestCase):
 
             try:
                 # Pass list like the CLI does via parse_offset_list()
-                result = adjust_offsets(
+                adjust_offsets(
                     json_path=json_path,
                     offsets=[1.5, -0.3],
                     output_dir=output_dir,

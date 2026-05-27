@@ -8,18 +8,21 @@ fNIRS数据质量可视化模块
 """
 
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 
 # Try to import visualization dependencies
 try:
-    import matplotlib
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcolors
-    from matplotlib.colors import LinearSegmentedColormap
-
-    MATPLOTLIB_AVAILABLE = True
+    import importlib.util
+    if importlib.util.find_spec("matplotlib"):
+        import matplotlib.colors as mcolors
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LinearSegmentedColormap
+        MATPLOTLIB_AVAILABLE = True
+    else:
+        MATPLOTLIB_AVAILABLE = False
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
     plt = None
@@ -146,9 +149,8 @@ def generate_channel_quality_heatmap(
 
         # Add channel type annotations (HbO/HbR)
         ch_types = quality_df["type"].tolist() if "type" in quality_df.columns else []
-        for i, ctype in enumerate(ch_types):
-            color = "white" if i < len(scores) and scores[i] < 0.5 else "black"
-            marker = "O" if ctype == "hbo" else "S"
+        for i, _ctype in enumerate(ch_types):
+            "white" if i < len(scores) and scores[i] < 0.5 else "black"
 
         plt.tight_layout()
 
@@ -254,7 +256,7 @@ def generate_snr_distribution_histogram(
             fontsize=10,
             verticalalignment="top",
             horizontalalignment="right",
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5},
         )
 
         ax.legend(loc="upper right")
@@ -455,7 +457,7 @@ def generate_hbo_hbr_correlation_plot(
             fontsize=10,
             verticalalignment="top",
             horizontalalignment="left",
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5},
         )
 
         ax.legend(loc="upper right")
@@ -546,8 +548,7 @@ def generate_all_visualizations(
         snr_path = output_dir / f"{stem}_snr_distribution.png"
 
         # Determine which SNR column to use
-        test_df = pd.read_csv(postfilter_detail)
-        snr_col = "tsnr" if "tsnr" in test_df.columns else "snr_time_db"
+        pd.read_csv(postfilter_detail)
 
         results["snr_distribution"] = generate_snr_distribution_histogram(
             quality_detail_path=postfilter_detail,

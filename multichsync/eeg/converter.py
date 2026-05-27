@@ -3,12 +3,14 @@ EEG转换器
 协调EEG文件读取和数据写入
 """
 
-import os
 from pathlib import Path
-from typing import Optional, Union, Literal, Dict, Tuple
+from typing import TYPE_CHECKING, Literal, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    import mne
 
 from .parser import read_eeg_file
-from .writer import write_eeg_file, write_eeg_to_brainvision, write_eeg_to_eeglab, write_eeg_to_edf
+from .writer import write_eeg_file
 
 # Export format types
 ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
@@ -23,7 +25,7 @@ def convert_eeg_format(file_path: Union[str, Path],
                        sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     转换EEG文件格式
-    
+
     Parameters
     ----------
     file_path : str or Path
@@ -40,28 +42,28 @@ def convert_eeg_format(file_path: Union[str, Path],
         是否显示详细输出
     sampling_rate : float, optional
         重采样频率（Hz），如果为None则保持原始采样率，默认None
-        
+
     Returns
     -------
     tuple
         (raw对象, 输出文件路径)
     """
     file_path = Path(file_path)
-    
+
     # Read EEG file
     parsed = read_eeg_file(file_path, preload=preload, verbose=verbose)
     raw = parsed['raw']
-    
+
     # Resample if sampling_rate is provided and different from original by more than 0.1 Hz
     if sampling_rate is not None and abs(raw.info['sfreq'] - sampling_rate) > 0.1:
         raw = raw.resample(sampling_rate, npad='auto')
-    
+
     # Determine output path
     if output_path is None:
         # Default output to convert subdirectory of input file directory
         output_dir = file_path.parent / "convert"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Determine extension based on export format
         if export_format == "BrainVision":
             ext = ".vhdr"
@@ -71,13 +73,13 @@ def convert_eeg_format(file_path: Union[str, Path],
             ext = ".edf"
         else:
             ext = ".vhdr"
-        
+
         output_path = output_dir / (file_path.stem + ext)
     else:
         output_path = Path(output_path)
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Write file
     output_file = write_eeg_file(
         raw=raw,
@@ -87,7 +89,7 @@ def convert_eeg_format(file_path: Union[str, Path],
         verbose=verbose,
         sampling_rate=sampling_rate
     )
-    
+
     return raw, output_file
 
 
@@ -99,7 +101,7 @@ def convert_eeg_to_brainvision(file_path: Union[str, Path],
                                sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为BrainVision格式
-    
+
     Parameters
     ----------
     file_path : str or Path
@@ -114,7 +116,7 @@ def convert_eeg_to_brainvision(file_path: Union[str, Path],
         是否显示详细输出
     sampling_rate : float, optional
         重采样频率（Hz），如果为None则保持原始采样率，默认None
-        
+
     Returns
     -------
     tuple
@@ -139,7 +141,7 @@ def convert_eeg_to_eeglab(file_path: Union[str, Path],
                           sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为EEGLAB格式
-    
+
     Parameters
     ----------
     file_path : str or Path
@@ -154,7 +156,7 @@ def convert_eeg_to_eeglab(file_path: Union[str, Path],
         是否显示详细输出
     sampling_rate : float, optional
         重采样频率（Hz），如果为None则保持原始采样率，默认None
-        
+
     Returns
     -------
     tuple
@@ -179,7 +181,7 @@ def convert_eeg_to_edf(file_path: Union[str, Path],
                        sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     将EEG文件转换为EDF格式
-    
+
     Parameters
     ----------
     file_path : str or Path
@@ -194,7 +196,7 @@ def convert_eeg_to_edf(file_path: Union[str, Path],
         是否显示详细输出
     sampling_rate : float, optional
         重采样频率（Hz），如果为None则保持原始采样率，默认None
-        
+
     Returns
     -------
     tuple
@@ -220,7 +222,7 @@ def convert_eeg_to_format(file_path: Union[str, Path],
                           sampling_rate: Optional[float] = None) -> Tuple['mne.io.BaseRaw', str]:
     """
     通用转换函数，支持多种输出格式
-    
+
     Parameters
     ----------
     file_path : str or Path
@@ -237,7 +239,7 @@ def convert_eeg_to_format(file_path: Union[str, Path],
         是否显示详细输出
     sampling_rate : float, optional
         重采样频率（Hz），如果为None则保持原始采样率，默认None
-        
+
     Returns
     -------
     tuple
@@ -247,7 +249,7 @@ def convert_eeg_to_format(file_path: Union[str, Path],
     valid_formats = ["BrainVision", "EEGLAB", "EDF"]
     if output_format not in valid_formats:
         raise ValueError(f"不支持的输出格式: {output_format}，支持格式: {valid_formats}")
-    
+
     return convert_eeg_format(
         file_path=file_path,
         export_format=output_format,  # type: ignore

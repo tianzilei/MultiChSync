@@ -2,19 +2,15 @@
 Unit tests for matchcrop_aligned module
 """
 
-import json
-import tempfile
+import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from multichsync.marker.matchcrop_aligned import (
-    calculate_aligned_time_range,
     apply_drift_correction,
+    calculate_aligned_time_range,
     extract_taskname_from_filename,
     rename_bids_task,
 )

@@ -2,12 +2,10 @@
 Tests for get_raw_data_duration function.
 """
 
-import pytest
+
 import numpy as np
 import pandas as pd
-import tempfile
-import os
-from pathlib import Path
+import pytest
 
 # Import the function to test
 from multichsync.marker.matcher import get_raw_data_duration
@@ -60,7 +58,11 @@ Mk1=New Segment,,0,1,0,0
 
         # This test assumes mne is available
         try:
-            import mne
+            import importlib.util
+            has_mne = importlib.util.find_spec("mne") is not None
+            if has_mne:
+                import mne
+                _ = mne  # Mark as used
 
             duration = get_raw_data_duration("test_device", "eeg")
             # Should return approximately 0.001 seconds (1 sample / 200 Hz)

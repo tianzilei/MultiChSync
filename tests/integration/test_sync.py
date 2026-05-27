@@ -12,10 +12,10 @@ Test scenarios:
 Uses temp_dir to create mock marker CSV files with different device times.
 """
 
-import pytest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 
 class TestMultiDeviceSync:
@@ -119,7 +119,7 @@ class TestMultiDeviceSync:
         # offset = 2.0, scale = 1.01
         drift_offset = 2.0
         drift_scale = 1.01
-        device2_raw = np.array([2.0, 12.1, 22.2, 32.3])  # After drift applied
+        np.array([2.0, 12.1, 22.2, 32.3])  # After drift applied
         # To create raw times that will match after correction:
         # device2_corrected = device2_raw * scale + offset
         device2_times = device1_times * drift_scale + drift_offset

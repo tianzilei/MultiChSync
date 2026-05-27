@@ -3,8 +3,6 @@ EEG test fixtures - minimal mock files for testing.
 """
 
 import pytest
-import tempfile
-from pathlib import Path
 
 
 def create_minimal_vhdr(

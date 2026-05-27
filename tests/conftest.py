@@ -2,10 +2,11 @@
 Pytest configuration and shared fixtures for MultiChSync tests.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
@@ -95,8 +96,8 @@ def mock_snirf_file(temp_dir):
 @pytest.fixture
 def mock_ecg_csv(temp_dir):
     """Create minimal mock ECG CSV file."""
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     # CSV with time column
     csv_path = temp_dir / "test_ecg.csv"
@@ -115,8 +116,8 @@ def mock_ecg_csv(temp_dir):
 @pytest.fixture
 def mock_ecg_csv_no_time(temp_dir):
     """Create minimal mock ECG CSV file without time column."""
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     csv_path = temp_dir / "test_ecg_no_time.csv"
     df = pd.DataFrame(

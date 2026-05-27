@@ -5,9 +5,10 @@ Crops other device timelines to match the shortest sequence's length and positio
 """
 
 import json
-import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any, Union
+from typing import Any, Dict, Optional, Union
+
+import pandas as pd
 
 
 def crop_timelines_to_shortest(
@@ -38,7 +39,7 @@ def crop_timelines_to_shortest(
 
     # Load data
     df = pd.read_csv(timeline_csv, encoding="utf-8-sig")
-    with open(metadata_json, "r", encoding="utf-8") as f:
+    with open(metadata_json, encoding="utf-8") as f:
         metadata = json.load(f)
 
     # Find shortest sequence

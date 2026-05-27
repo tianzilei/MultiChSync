@@ -6,16 +6,16 @@ with support for linear drift estimation, confidence scoring, and weighted conse
 timeline generation.
 """
 
-import numpy as np
-import pandas as pd
-from typing import List, Tuple, Dict, Optional, Any
-from dataclasses import dataclass
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
-import warnings
-from scipy.optimize import linear_sum_assignment
+from typing import Any, Dict, List, Optional, Tuple
+
 import networkx as nx
+import numpy as np
+import pandas as pd
+from scipy.optimize import linear_sum_assignment
 
 # Default data directory
 DEFAULT_CONVERT_DIR = "Data/convert"
@@ -425,7 +425,7 @@ def match_min_cost_flow_with_confidence(
         matches: Array of (idx1, idx2) pairs
         confidences: Confidence scores for each match (0-1)
     """
-    C = compute_cost_matrix(t1, t2, power=1)
+    compute_cost_matrix(t1, t2, power=1)
 
     # Create flow network
     G = nx.DiGraph()

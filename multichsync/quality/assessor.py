@@ -14,12 +14,13 @@ fNIRS数据质量评估模块
 依赖：mne, pandas, numpy
 """
 
-from pathlib import Path
 import json
-from typing import Tuple, Optional, List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import h5py
 import numpy as np
 import pandas as pd
-import h5py
 
 # Try to import mne, provide stub if not available
 try:
@@ -250,7 +251,7 @@ def smart_filter_raw(
             l_freq=l_freq,
             h_freq=h_freq,
             method="iir",
-            iir_params=dict(order=4, ftype="butter"),
+            iir_params={"order": 4, "ftype": "butter"},
             verbose=verbose,
         )
         filter_method_used = "iir_butterworth_order4"
@@ -1220,7 +1221,7 @@ def compute_task_metrics(
     if len(hbr_data) != n_samples:
         raise ValueError("HbO and HbR data must have same length")
 
-    for i, (onset, duration) in enumerate(zip(onsets_samples, durations_samples)):
+    for _i, (onset, _duration) in enumerate(zip(onsets_samples, durations_samples)):
         # Define baseline window: before event onset
         baseline_start = onset - baseline_samples
         baseline_end = onset
@@ -1856,7 +1857,6 @@ def process_one_snirf(
 
         # Try to use mne_nirs to write metadata, fall back to h5py if not available
         try:
-            import mne_nirs
             from mne_nirs.io import write_raw_snirf
 
             # Create a copy of Raw object with bad channel markers
@@ -1908,13 +1908,14 @@ def process_one_snirf(
 
         except ImportError:
             # mne_nirs not available, use h5py to write directly
-            import h5py
-            import json as json_module
             import datetime
+            import json as json_module
+
+            import h5py
 
             with h5py.File(output_snirf_file, "r+") as f:
                 if "nirs" not in f:
-                    raise RuntimeError("SNIRF file missing /nirs group")
+                    raise RuntimeError("SNIRF file missing /nirs group") from None
 
                 if "metaDataTags" not in f["nirs"]:
                     # Create metaDataTags group

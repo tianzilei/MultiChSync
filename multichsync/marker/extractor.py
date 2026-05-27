@@ -2,9 +2,10 @@
 Marker extraction functions for various data formats
 """
 
-import pandas as pd
 from pathlib import Path
-from typing import Union, Optional, Dict
+from typing import Dict, Optional, Union
+
+import pandas as pd
 
 
 def hms_to_sec(x: Union[str, float]) -> float:
@@ -122,7 +123,7 @@ def extract_brainvision_marker(
     # ---------- Read SamplingInterval (unit: µs) ----------
     sampling_interval_us = None
 
-    with open(vhdr_path, "r", encoding="utf-8", errors="ignore") as f:
+    with open(vhdr_path, encoding="utf-8", errors="ignore") as f:
         for line in f:
             if line.startswith("SamplingInterval="):
                 sampling_interval_us = float(line.split("=")[1].strip())
@@ -137,7 +138,7 @@ def extract_brainvision_marker(
     # ---------- Parse vmrk ----------
     rows = []
 
-    with open(vmrk_path, "r", encoding="utf-8", errors="ignore") as f:
+    with open(vmrk_path, encoding="utf-8", errors="ignore") as f:
         for line in f:
             line = line.strip()
 
@@ -150,7 +151,7 @@ def extract_brainvision_marker(
             try:
                 _, val = line.split("=", 1)
                 parts = [x.strip() for x in val.split(",")]
-            except:
+            except ValueError:
                 continue
 
             if len(parts) < 3:
@@ -160,7 +161,7 @@ def extract_brainvision_marker(
 
             try:
                 pos = int(parts[2])
-            except:
+            except ValueError:
                 continue
 
             # BrainVision uses 1-based index
@@ -210,14 +211,14 @@ def extract_fnirs_marker(
     encodings_to_try = ["gbk", "utf-8-sig", "latin1"]
     for enc in encodings_to_try:
         try:
-            with open(input_csv, "r", encoding=enc, errors="ignore") as f:
+            with open(input_csv, encoding=enc, errors="ignore") as f:
                 for i, line in enumerate(f):
                     if line.strip().startswith("Start Time"):
                         header_idx = i
                         break
             if header_idx is not None:
                 break
-        except:
+        except Exception:
             continue
 
     if header_idx is None:
@@ -236,7 +237,7 @@ def extract_fnirs_marker(
                 str(c).strip() for c in df.columns
             ]:
                 break
-        except:
+        except Exception:
             continue
 
     if df is None:

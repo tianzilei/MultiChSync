@@ -3,10 +3,9 @@ End-to-end integration test for matchcrop-aligned bug fixes.
 Tests both EEG renaming and ECG headerless CSV handling in a full workflow.
 """
 
-import unittest
-import tempfile
 import json
-import pandas as pd
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -79,7 +78,7 @@ class TestMatchcropAlignedE2E(unittest.TestCase):
                     mock_mne.return_value = mock_raw
 
                     result = matchcrop_aligned(
-                        json_path=json_path, 
+                        json_path=json_path,
                         start_time=0.0,
                         end_time=10.0,
                         taskname="rest"

@@ -11,18 +11,17 @@ Uses unittest.mock.MagicMock to mock MNE Raw objects since the actual
 functions work with MNE data structures.
 """
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
-from unittest.mock import MagicMock, patch, PropertyMock
-from pathlib import Path
 
 # Import the functions to test
 from multichsync.quality import (
     assess_hb_quality,
     compute_hb_snr,
-    smart_filter_raw,
     pair_hbo_hbr_channels,
+    smart_filter_raw,
 )
 
 

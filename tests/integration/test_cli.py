@@ -6,10 +6,9 @@ Since the CLI uses argparse internally, we wrap it with a Click command.
 """
 
 import sys
-import pytest
-from click import Command, Group
-from click.testing import CliRunner
 
+import pytest
+from click.testing import CliRunner
 
 # Import the CLI main function
 from multichsync.cli import main as cli_main

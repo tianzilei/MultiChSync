@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Union
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from .matcher import load_marker_csv_enhanced
@@ -142,7 +141,7 @@ def _build_stacked_figure(
         # Sort by file_name ascending
         dev_df = dev_df.sort_values(by="file_name", ascending=True).reset_index(drop=True)
 
-        dev_color = DEVICE_CONFIG[device]["color"]
+        DEVICE_CONFIG[device]["color"]
         dev_label = DEVICE_CONFIG[device]["label"]
 
         bar_height = 0.5
@@ -317,7 +316,7 @@ def _build_alignment_json(
     # Pre-populate start/end groups by sequence_id across devices.
     # Each sequence_id that appears in multiple devices forms a start group
     # and an end group, so the user sees the expected format immediately.
-    from collections import defaultdict, Counter
+    from collections import Counter, defaultdict
     _seq_to_fnames: Dict[str, List[str]] = defaultdict(list)
     _seq_device_count: Counter = Counter()
     for d in devices_list:

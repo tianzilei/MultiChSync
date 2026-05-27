@@ -15,7 +15,6 @@ Session-based cropping (``matchcrop_by_sessions`` / ``batch_matchcrop_from_match
 """
 
 import json
-import os
 import re
 import shutil
 from collections import defaultdict
@@ -47,7 +46,7 @@ def calculate_aligned_time_range(metadata) -> Tuple[float, float]:
     # Handle string input (file path)
     if isinstance(metadata, (str, Path)):
         json_path = Path(metadata) if isinstance(metadata, str) else metadata
-        with open(json_path, "r") as f:
+        with open(json_path) as f:
             metadata = json.load(f)
 
     timeline_meta = metadata.get("timeline_metadata", {})
@@ -184,7 +183,6 @@ def _extract_subject_id(json_path: Path) -> str:
     if m:
         return m.group(1)
     # Fallback: try from the JSON's subject_id field or the containing folder
-    stem = json_path.stem
     json_name = json_path.name
     json_name = json_name.replace("basematched_", "").replace("traversal_matched_", "")
     json_name = json_name.replace("_metadata.json", "").replace("_metadata", "")
@@ -226,7 +224,7 @@ def _get_reference_device(df: pd.DataFrame, devices: List[str],
 
     Falls back to ``metadata["anchor"]`` or first device on tie.
     """
-    anchor = metadata.get("anchor", "")
+    metadata.get("anchor", "")
 
     best_dev = None
     best_count = -1
@@ -574,7 +572,6 @@ def _save_crop_timeline_figure(
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import FancyBboxPatch
     cmap_bar = plt.colormaps.get_cmap("tab10")
 
     n_devices = len(devices)
@@ -610,7 +607,7 @@ def _save_crop_timeline_figure(
         # ── Gather markers (keep NaN so shapes match df rows) ────────
         marker_times = df[stacked_col].values if stacked_col in df.columns else np.full(len(df), np.nan)
         marker_indices = df[index_col].values if index_col in df.columns else np.full(len(df), -1)
-        session_vals = df[session_col].values if session_col in df.columns else np.full(len(df), np.nan)
+        df[session_col].values if session_col in df.columns else np.full(len(df), np.nan)
 
         # Reference device stacked_time — fallback for gap x-positions
         ref_stacked = f"{ref_device}_stacked_time"
@@ -848,7 +845,7 @@ def matchcrop_by_sessions(
     if not json_path.exists():
         raise FileNotFoundError(f"Metadata JSON not found: {json_path}")
 
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         metadata = json.load(f)
 
     subject_id = _extract_subject_id(json_path)
@@ -1027,7 +1024,7 @@ def matchcrop_by_sessions(
                 device_ses_dir = ses_dir
 
             device_type = detect_device_type(device)
-            shift = shifts.get(device, 0.0)
+            shifts.get(device, 0.0)
 
             # Determine which session file of THIS device to use.
             # For the reference device itself the session is always ses_num
@@ -1191,7 +1188,7 @@ def matchcrop_by_sessions(
                     "status": "ok",
                     "output": crop_result,
                 }
-            except ValueError as e:
+            except ValueError:
                 # Crop range outside file bounds → copy file as-is
                 _copy_file_to_output(converted_file, device_type, device_ses_dir, final_bids_stem)
                 msg = (f"    {device}: crop range outside data, copied "
@@ -1364,7 +1361,7 @@ def batch_matchcrop_from_matching_dir(
         # Prefer the richer metadata (device_info present) if multiple JSOns
         chosen_json = jsons[0]
         for jf in jsons:
-            with open(jf, "r", encoding="utf-8") as f:
+            with open(jf, encoding="utf-8") as f:
                 meta = json.load(f)
             if "device_info" in meta and meta["device_info"]:
                 chosen_json = jf
@@ -1426,7 +1423,7 @@ def batch_matchcrop_from_matching_dir(
     # Determine effective taskname from first successful subject
     effective_taskname = taskname
     if effective_taskname is None:
-        for sid, r in overall_results.items():
+        for _sid, r in overall_results.items():
             tn = r.get("taskname") if isinstance(r, dict) else None
             if tn:
                 effective_taskname = tn
@@ -1530,7 +1527,7 @@ def crop_and_rename_device(
     # Get drift correction for this device
     drift_corrections = device_info.get("drift_correction") or {}
     offset = drift_corrections.get("offset", 0.0)
-    scale = drift_corrections.get("scale", 1.0)
+    drift_corrections.get("scale", 1.0)
 
     # Crop the data using existing functions
     if device_type == "ecg":
@@ -1688,7 +1685,7 @@ def matchcrop_aligned(
         raise ValueError("taskname is required (no default)")
 
     # Load metadata
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         metadata = json.load(f)
 
     # Calculate aligned time range for validation
@@ -1705,7 +1702,7 @@ def matchcrop_aligned(
     # Warn if user times are outside aligned range (but allow it)
     if crop_start < aligned_start or crop_end > aligned_end:
         print(f"  Warning: Crop range [{crop_start:.3f}s, {crop_end:.3f}s] extends beyond aligned range [{aligned_start:.3f}s, {aligned_end:.3f}s]")
-        print(f"  This may result in missing data or errors if devices don't have data in the requested range.")
+        print("  This may result in missing data or errors if devices don't have data in the requested range.")
 
     # Get output directory (same as input JSON)
     output_dir = json_path.parent
@@ -1734,7 +1731,7 @@ def matchcrop_aligned(
         "errors": [],
     }
 
-    print(f"Cropping devices using aligned timeline:")
+    print("Cropping devices using aligned timeline:")
     print(f"  Time range: {crop_start:.3f}s - {crop_end:.3f}s")
     print(f"  Task name: {old_taskname} -> {taskname}")
     print(f"  Output directory: {output_dir}")
@@ -1757,7 +1754,7 @@ def matchcrop_aligned(
 
             results["cropped_devices"].append(device_name)
             results["output_files"][device_name] = crop_result
-            print(f"    -> Cropped successfully")
+            print("    -> Cropped successfully")
 
         except Exception as e:
             error_msg = f"Failed to crop {device_name}: {str(e)}"
@@ -1778,7 +1775,7 @@ def matchcrop_aligned(
     results["output_files"]["metadata"] = str(crop_metadata_path)
 
     # Print summary
-    print(f"\nCrop complete:")
+    print("\nCrop complete:")
     print(f"  Devices processed: {len(results['cropped_devices'])}/{len(device_info)}")
     print(f"  Errors: {len(results['errors'])}")
 
@@ -1825,7 +1822,7 @@ def main():
         taskname=args.taskname,
     )
 
-    print(f"\nProcessing complete!")
+    print("\nProcessing complete!")
     print(f"  Output directory: {result['output_dir']}")
 
 

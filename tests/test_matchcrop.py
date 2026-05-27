@@ -1,11 +1,7 @@
 """Tests for crop_ecg_data function in matchcrop module"""
 
-import tempfile
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
-import pytest
 
 from multichsync.marker.matchcrop import crop_ecg_data
 

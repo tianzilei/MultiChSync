@@ -2,9 +2,9 @@
 Unit tests for marker cleaning functions (clean_marker_csv and clean_marker_folder).
 """
 
+
 import pandas as pd
-import pytest
-from pathlib import Path
+
 from multichsync.marker import clean_marker_csv, clean_marker_folder
 
 
@@ -242,7 +242,7 @@ class TestCleanMarkerFolder:
 
         output_dir = temp_dir / "output"
 
-        summary = clean_marker_folder(
+        clean_marker_folder(
             input_dir=input_dir, output_dir=output_dir, min_rows=2, min_interval=0.5
         )
 
@@ -272,7 +272,7 @@ class TestCleanMarkerFolder:
 
         output_dir = temp_dir / "output"
 
-        summary = clean_marker_folder(
+        clean_marker_folder(
             input_dir=temp_dir, output_dir=output_dir, min_rows=2, min_interval=0.5
         )
 

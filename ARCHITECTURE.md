@@ -29,7 +29,8 @@ MultiChSync is a comprehensive Python tool for converting, processing, and quali
 MultiChSync/
 ├── multichsync/                  # Main package
 │   ├── __init__.py              # Root exports
-│   ├── cli.py                   # Command-line interface
+│   ├── __main__.py              # Python -m entry point
+│   ├── cli.py                   # Command-line interface (2000+ lines)
 │   ├── fnirs/                   # fNIRS conversion module
 │   │   ├── __init__.py          # fNIRS API exports
 │   │   ├── parser.py            # Shimadzu TXT parsing
@@ -49,21 +50,34 @@ MultiChSync/
 │   │   ├── writer.py            # BrainVision/EEGLAB/EDF writing
 │   │   ├── converter.py         # Conversion logic
 │   │   └── batch.py             # Batch conversion
-│   ├── marker/                  # Marker extraction module
+│   ├── marker/                  # Marker processing module
 │   │   ├── __init__.py
 │   │   ├── extractor.py         # Multi-format marker extraction
-│   │   └── info_extractor.py    # Metadata extraction and reporting
+│   │   ├── info_extractor.py    # Metadata extraction and reporting
+│   │   ├── adjust_offsets.py    # Manual offset adjustment
+│   │   ├── matchcrop.py         # Legacy marker cropping
+│   │   ├── matchcrop_aligned.py # Session-based aligned cropping
+│   │   ├── matcher.py           # Marker matching algorithms
+│   │   ├── timeline.py          # Timeline processing
+│   │   ├── timeline_cropper.py  # Timeline cropping utilities
+│   │   └── traversal_matcher.py # Traversal-based matching
 │   ├── quality/                 # Quality assessment module
 │   │   ├── __init__.py
-│   │   └── assessor.py          # Comprehensive quality assessment
+│   │   ├── assessor.py          # Comprehensive quality assessment
+│   │   └── visualization.py     # Quality visualization plots
 │   └── utils/                   # Shared utilities
 ├── Data/                        # Example data (not tracked in git)
-├── examples/                    # Example scripts
-├── tests/                       # Test files
+├── tests/                       # Test suite
+│   ├── unit/                    # Unit tests
+│   ├── integration/             # Integration tests
+│   └── fixtures/                # Test fixtures
+├── scripts/                     # Utility scripts
+├── config/                      # Configuration files
 ├── README.md                    # Project documentation
-├── setup.py                     # Package configuration
-├── requirements.txt             # Dependencies
-└── run_example.py              # Example runner
+├── ARCHITECTURE.md              # Architecture documentation
+├── pyproject.toml               # Package & tool configuration
+├── setup.py                     # Legacy package configuration
+└── requirements.txt             # Dependencies
 ```
 
 ## Core Components
@@ -111,24 +125,33 @@ MultiChSync/
 - Batch processing with recursive directory search
 
 ### 4. Marker Module (`multichsync/marker/`)
-**Purpose**: Extract, clean, and analyze timing markers from various formats
+**Purpose**: Extract, clean, match, and crop timing markers across multiple modalities
 
 **Key Files**:
 - `extractor.py` - Extract markers from fNIRS CSV, BrainVision .vmrk, Biopac CSV
 - `info_extractor.py` - Generate per-subject reports with metadata and sequence durations
+- `adjust_offsets.py` - Manual offset adjustment utilities
+- `matchcrop_aligned.py` - Session-based aligned cropping (recommended)
+- `traversal_matcher.py` - Advanced traversal-based marker matching
+- `matcher.py` - Core matching algorithms
+- `timeline.py` - Timeline data structures and processing
+- `timeline_cropper.py` - Timeline cropping utilities
 
 **Key Features**:
 - Automatic type detection (fNIRS, EEG, ECG)
 - Robust encoding handling (utf-8-sig, gbk, latin1 fallbacks)
 - Data cleaning (deduplication, interval filtering)
 - Subject-level reporting with device type inference
-- Sequence duration extraction from raw data files
+- Session-based alignment and cropping
+- Multiple matching strategies (traversal, baseline, length-first)
+- Manual offset adjustment support
 
 ### 5. Quality Assessment Module (`multichsync/quality/`)
-**Purpose**: Comprehensive fNIRS data quality evaluation with metadata integration
+**Purpose**: Comprehensive fNIRS data quality evaluation with metadata integration and visualization
 
-**Key File**:
-- `assessor.py` - 90K+ lines of comprehensive quality assessment logic
+**Key Files**:
+- `assessor.py` - Comprehensive quality assessment logic (2700+ lines)
+- `visualization.py` - Quality metrics visualization and reporting
 
 **Key Features**:
 - **Signal-level metrics** (based on `fnirs_signal_level_qc_metrics.md`):
@@ -141,6 +164,11 @@ MultiChSync/
 - **Metadata integration**:
   - Write bad channel lists, quality scores to SNIRF `/nirs/metaDataTags`
   - Generate processed SNIRF files with embedded quality metadata
+- **Visualization**:
+  - Quality score heatmaps
+  - SNR distribution histograms
+  - Channel-type breakdown plots
+  - Pre/post-filter comparison reports
 - **Smart filtering**: IIR for short recordings (<10 min), FIR for longer
 - **Batch processing**: Error isolation, summary reporting
 
@@ -185,19 +213,22 @@ Paradigm-specific Metrics (Task/Resting)
 
 ## Configuration
 
-### Package Configuration (`setup.py`)
+### Package Configuration (`pyproject.toml`)
 - Entry point: `multichsync=multichsync.cli:main`
 - Python 3.8+ requirement
 - MIT license
+- Build system: setuptools
+- Optional dependencies: quality (mne-nirs), dev (pytest, black, ruff, mypy)
 
-### Dependencies (`requirements.txt`)
-- Core dependencies listed with version constraints
-- Optional dependencies for specific modules
+### Code Quality Tools
+- **Linting**: ruff (configured in `pyproject.toml`)
+- **Formatting**: black (line-length: 88, target: py38)
+- **Type checking**: mypy (strict mode with some relaxations)
+- **Testing**: pytest (with coverage support)
 
-### Other Config Files
-- Linting/formatting: configured in `pyproject.toml` (ruff, black, mypy)
-- Testing: configured in `pyproject.toml` (pytest)
-- No CI/CD configs
+### Legacy Configuration
+- `setup.py` - Legacy package configuration (kept for compatibility)
+- `requirements.txt` - Core dependencies list
 
 ## Build & Deploy
 
@@ -225,9 +256,14 @@ multichsync marker info --input-dir Data/marker --output-dir ./reports
 
 ### Testing
 ```bash
-# Run test files directly
-python test_event_matching.py
-python test_metadata_functionality.py
+# Run all tests with coverage
+pytest --cov=multichsync --cov-report=term-missing -n auto
+
+# Run specific test file
+pytest tests/unit/test_fnirs_converter.py -v
+
+# Run integration tests
+pytest tests/integration/ -v
 ```
 
 ## Key Architectural Decisions

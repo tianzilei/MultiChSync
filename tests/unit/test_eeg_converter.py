@@ -2,13 +2,12 @@
 Unit tests for EEG converter functions
 """
 
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from multichsync.eeg.converter import convert_eeg_format
 from multichsync.eeg.batch import batch_convert_eeg_format
+from multichsync.eeg.converter import convert_eeg_format
 
 
 class TestConvertEegFormat:
@@ -162,7 +161,7 @@ class TestConvertEegFormat:
         mock_raw.times = [i / 500 for i in range(1000)]
         mock_raw.annotations = MagicMock()
         mock_raw.annotations.__len__ = MagicMock(return_value=0)
-        
+
         # Create a mock resampled raw object
         mock_resampled = MagicMock()
         mock_resampled.ch_names = ["Ch1", "Ch2"]
@@ -171,10 +170,10 @@ class TestConvertEegFormat:
         mock_resampled.times = [i / 250 for i in range(500)]
         mock_resampled.annotations = MagicMock()
         mock_resampled.annotations.__len__ = MagicMock(return_value=0)
-        
+
         # Mock the resample method
         mock_raw.resample = MagicMock(return_value=mock_resampled)
-        
+
         # Setup mock parsed result
         mock_read.return_value = {
             "raw": mock_raw,
@@ -183,14 +182,14 @@ class TestConvertEegFormat:
             "metadata": {"n_channels": 2, "sfreq": 500.0},
             "channels": [],
         }
-        
+
         # Setup mock write
         mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
-        
+
         # Create test input file
         input_file = tmp_path / "test.set"
         input_file.touch()
-        
+
         # Call the function with sampling_rate=250
         result_raw, result_path = convert_eeg_format(
             file_path=str(input_file),
@@ -198,10 +197,10 @@ class TestConvertEegFormat:
             output_path=str(tmp_path / "output.vhdr"),
             sampling_rate=250.0,
         )
-        
+
         # Verify resample was called with 250Hz
         mock_raw.resample.assert_called_once_with(250.0, npad='auto')
-        
+
         # Verify write was called with resampled raw
         call_args = mock_write.call_args
         assert call_args.kwargs["raw"] is mock_resampled
@@ -219,10 +218,10 @@ class TestConvertEegFormat:
         mock_raw.times = [i / 500 for i in range(1000)]
         mock_raw.annotations = MagicMock()
         mock_raw.annotations.__len__ = MagicMock(return_value=0)
-        
+
         # Mock the resample method (should not be called)
         mock_raw.resample = MagicMock()
-        
+
         # Setup mock parsed result
         mock_read.return_value = {
             "raw": mock_raw,
@@ -231,24 +230,24 @@ class TestConvertEegFormat:
             "metadata": {"n_channels": 2, "sfreq": 500.0},
             "channels": [],
         }
-        
+
         # Setup mock write
         mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
-        
+
         # Create test input file
         input_file = tmp_path / "test.set"
         input_file.touch()
-        
+
         # Call the function without sampling_rate (default None)
         result_raw, result_path = convert_eeg_format(
             file_path=str(input_file),
             export_format="BrainVision",
             output_path=str(tmp_path / "output.vhdr"),
         )
-        
+
         # Verify resample was NOT called
         mock_raw.resample.assert_not_called()
-        
+
         # Verify write was called with original raw
         call_args = mock_write.call_args
         assert call_args.kwargs["raw"] is mock_raw
@@ -266,10 +265,10 @@ class TestConvertEegFormat:
         mock_raw.times = [i / 250.05 for i in range(1000)]
         mock_raw.annotations = MagicMock()
         mock_raw.annotations.__len__ = MagicMock(return_value=0)
-        
+
         # Mock the resample method (should not be called)
         mock_raw.resample = MagicMock()
-        
+
         # Setup mock parsed result
         mock_read.return_value = {
             "raw": mock_raw,
@@ -278,14 +277,14 @@ class TestConvertEegFormat:
             "metadata": {"n_channels": 2, "sfreq": 250.05},
             "channels": [],
         }
-        
+
         # Setup mock write
         mock_write.return_value = str(tmp_path / "convert" / "test.vhdr")
-        
+
         # Create test input file
         input_file = tmp_path / "test.set"
         input_file.touch()
-        
+
         # Call the function with sampling_rate=250.0 (difference 0.05 < 0.1)
         result_raw, result_path = convert_eeg_format(
             file_path=str(input_file),
@@ -293,10 +292,10 @@ class TestConvertEegFormat:
             output_path=str(tmp_path / "output.vhdr"),
             sampling_rate=250.0,
         )
-        
+
         # Verify resample was NOT called (difference within tolerance)
         mock_raw.resample.assert_not_called()
-        
+
         # Verify write was called with original raw
         call_args = mock_write.call_args
         assert call_args.kwargs["raw"] is mock_raw
@@ -426,7 +425,7 @@ class TestBatchConvertEegFormat:
         mock_convert.side_effect = mock_convert_side_effect
 
         # Call batch conversion
-        result = batch_convert_eeg_format(
+        batch_convert_eeg_format(
             input_dir=str(input_dir), export_format="EEGLAB"
         )
 
@@ -465,7 +464,7 @@ class TestBatchConvertEegFormat:
         mock_convert.side_effect = mock_convert_side_effect
 
         # Call batch conversion with sampling_rate
-        result = batch_convert_eeg_format(
+        batch_convert_eeg_format(
             input_dir=str(input_dir),
             export_format="BrainVision",
             sampling_rate=250.0,

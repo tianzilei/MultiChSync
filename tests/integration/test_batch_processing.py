@@ -6,13 +6,14 @@ verifying they handle various scenarios including empty directories,
 non-existent directories, and recursive/non-recursive processing.
 """
 
-import pytest
-import pandas as pd
 from pathlib import Path
 
-from multichsync.fnirs.batch import batch_convert_fnirs_to_snirf
+import pandas as pd
+import pytest
+
 from multichsync.ecg.batch import batch_convert_acq_to_csv
 from multichsync.eeg.batch import batch_convert_eeg_format
+from multichsync.fnirs.batch import batch_convert_fnirs_to_snirf
 
 
 class TestFnirsBatchProcessing:
@@ -51,7 +52,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.4	Averaing	1
 (1,1)
-          	      ch- 1
+                ch- 1
 Time(sec)	Task	Mark	Count	HbO1
 0.0	00	0	0	0.1
 0.1	00	0	0	0.2
@@ -90,7 +91,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.9	Averaing	1
 (1,1)(2,1)
-          	      ch- 1	    ch- 1
+                ch- 1        ch- 1
 Time(sec)	Task	Mark	Count	HbO1	HbR1	HbT1	HbO2	HbR2	HbT2
 0.0	00	0	0	0.1	0.3	0.5	0.2	0.4	0.6
 0.1	00	0	0	0.11	0.31	0.51	0.21	0.41	0.61
@@ -197,7 +198,7 @@ class TestEegBatchProcessing:
         # Run batch conversion (non-recursive, will fail on actual conversion but tests workflow)
         # Using try/except since actual conversion will fail without proper EEG files
         try:
-            result = batch_convert_eeg_format(
+            batch_convert_eeg_format(
                 input_dir=str(input_dir),
                 export_format="BrainVision",
                 output_dir=str(temp_dir / "eeg_output"),
@@ -205,14 +206,14 @@ class TestEegBatchProcessing:
             )
             # If conversion succeeds, verify file count
             # In practice, the batch function will fail on invalid EEG files
-        except Exception as e:
+        except Exception:
             # Expected to fail on invalid EEG data, but workflow should be attempted
             # This verifies the function is being called correctly
             pass
 
         # The key test is that the function processes only top-level files
         # Verify output directory was created (shows function reached file discovery stage)
-        output_dir = temp_dir / "eeg_output"
+        temp_dir / "eeg_output"
         # Note: The function creates output dir before processing files
 
     def test_batch_recursive(self, temp_dir: Path):
@@ -240,19 +241,19 @@ class TestEegBatchProcessing:
         # Run batch conversion (recursive)
         # Using try/except since actual conversion will fail without proper EEG files
         try:
-            result = batch_convert_eeg_format(
+            batch_convert_eeg_format(
                 input_dir=str(input_dir),
                 export_format="BrainVision",
                 output_dir=str(temp_dir / "eeg_output_recursive"),
                 recursive=True,
             )
-        except Exception as e:
+        except Exception:
             # Expected to fail on invalid EEG data, but workflow should be attempted
             pass
 
         # The key test is that recursive mode is enabled and searches subdirectories
         # Verify output directory was created
-        output_dir = temp_dir / "eeg_output_recursive"
+        temp_dir / "eeg_output_recursive"
 
 
 class TestBatchProcessingEdgeCases:
@@ -292,7 +293,7 @@ class TestBatchProcessingEdgeCases:
         except FileNotFoundError:
             # This is also acceptable behavior - raising error for non-existent dir
             pass
-        except Exception as e:
+        except Exception:
             # Any other exception is also acceptable for non-existent input
             pass
 
@@ -335,7 +336,7 @@ class TestBatchProcessingEdgeCases:
         except FileNotFoundError:
             # This is also acceptable behavior
             pass
-        except Exception as e:
+        except Exception:
             # Any other exception for non-existent dir is acceptable
             pass
 
@@ -366,7 +367,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.9	Averaing	1
 (1,1)(2,1)
-          	      ch- 1	    ch- 1
+                ch- 1        ch- 1
 Time(sec)	Task	Mark	Count	HbO1	HbR1	HbT1	HbO2	HbR2	HbT2
 0.0	00	0	0	0.1	0.3	0.5	0.2	0.4	0.6
 0.1	00	0	0	0.11	0.31	0.51	0.21	0.41	0.61
@@ -416,7 +417,7 @@ Time(sec)	Task	Mark	Count	HbO1	HbR1	HbT1	HbO2	HbR2	HbT2
 
         # Run batch conversion (non-recursive)
         try:
-            result = batch_convert_eeg_format(
+            batch_convert_eeg_format(
                 input_dir=str(input_dir),
                 export_format="BrainVision",
                 output_dir=str(temp_dir / "output"),

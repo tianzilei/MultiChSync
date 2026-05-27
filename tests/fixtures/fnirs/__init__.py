@@ -2,10 +2,11 @@
 fNIRS test fixtures - minimal mock SNIRF files for testing.
 """
 
-import pytest
+from pathlib import Path
+
 import h5py
 import numpy as np
-from pathlib import Path
+import pytest
 
 
 def create_minimal_snirf(

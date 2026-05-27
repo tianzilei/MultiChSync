@@ -3,10 +3,10 @@ EEG数据写入器
 支持多种输出格式：BrainVision、EEGLAB、EDF等
 """
 
-import os
-import numpy as np
 from pathlib import Path
-from typing import Optional, Union, Literal, Tuple
+from typing import Literal, Optional, Tuple, Union
+
+import numpy as np
 
 try:
     import mne
@@ -22,12 +22,12 @@ ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
 def _normalize_export_format(export_format: ExportFormat) -> Tuple[str, str]:
     """
     将导出格式转换为MNE格式和文件扩展名
-    
+
     Parameters
     ----------
     export_format : ExportFormat
         导出格式名称
-        
+
     Returns
     -------
     tuple
@@ -44,12 +44,12 @@ def _normalize_export_format(export_format: ExportFormat) -> Tuple[str, str]:
 def _clean_annotations(raw: 'mne.io.BaseRaw') -> 'mne.io.BaseRaw':
     """
     清理超出数据范围的标注
-    
+
     Parameters
     ----------
     raw : mne.io.BaseRaw
         EEG数据对象
-        
+
     Returns
     -------
     mne.io.BaseRaw
@@ -57,11 +57,11 @@ def _clean_annotations(raw: 'mne.io.BaseRaw') -> 'mne.io.BaseRaw':
     """
     if raw.annotations is None or len(raw.annotations) == 0:
         return raw
-    
+
     sfreq = raw.info['sfreq']
     n_times = raw.n_times
     mask = np.zeros(len(raw.annotations), dtype=bool)
-    
+
     for i, onset in enumerate(raw.annotations.onset):
         sample = int(round(onset * sfreq))
         if 0 <= sample < n_times:
@@ -69,15 +69,15 @@ def _clean_annotations(raw: 'mne.io.BaseRaw') -> 'mne.io.BaseRaw':
         else:
             # Annotations out of data range, skip
             pass
-    
+
     if np.all(mask):
         # All annotations are within range
         return raw
-    
+
     # Filter annotations
     filtered_annotations = raw.annotations[mask]
     raw.set_annotations(filtered_annotations)
-    
+
     return raw
 
 
@@ -89,7 +89,7 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
                    sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入文件
-    
+
     Parameters
     ----------
     raw : mne.io.BaseRaw
@@ -104,7 +104,7 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
         是否显示详细输出
     sampling_rate : float, optional
         目标采样率（Hz），默认None（保持原始采样率）
-        
+
     Returns
     -------
     str
@@ -112,22 +112,22 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
     """
     if not MNE_AVAILABLE:
         raise ImportError("需要安装 mne 库来写入EEG文件")
-    
+
     output_path = Path(output_path)
-    
+
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Get MNE format and extension
     mne_format, expected_ext = _normalize_export_format(export_format)
-    
+
     # If output path has no extension or extension does not match, add correct extension
     if output_path.suffix.lower() != expected_ext.lower():
         output_path = output_path.with_suffix(expected_ext)
-    
+
     # Clean up annotations out of data range
     raw = _clean_annotations(raw)
-    
+
     # Export file
     export.export_raw(
         fname=str(output_path),
@@ -136,7 +136,7 @@ def write_eeg_file(raw: 'mne.io.BaseRaw',
         overwrite=overwrite,
         verbose=verbose
     )
-    
+
     return str(output_path)
 
 
@@ -147,7 +147,7 @@ def write_eeg_to_brainvision(raw: 'mne.io.BaseRaw',
                              sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入BrainVision格式
-    
+
     Parameters
     ----------
     raw : mne.io.BaseRaw
@@ -160,7 +160,7 @@ def write_eeg_to_brainvision(raw: 'mne.io.BaseRaw',
         是否显示详细输出
     sampling_rate : float, optional
         目标采样率（Hz），默认None（保持原始采样率）
-        
+
     Returns
     -------
     str
@@ -183,7 +183,7 @@ def write_eeg_to_eeglab(raw: 'mne.io.BaseRaw',
                         sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入EEGLAB格式
-    
+
     Parameters
     ----------
     raw : mne.io.BaseRaw
@@ -196,7 +196,7 @@ def write_eeg_to_eeglab(raw: 'mne.io.BaseRaw',
         是否显示详细输出
     sampling_rate : float, optional
         目标采样率（Hz），默认None（保持原始采样率）
-        
+
     Returns
     -------
     str
@@ -219,7 +219,7 @@ def write_eeg_to_edf(raw: 'mne.io.BaseRaw',
                       sampling_rate: Optional[float] = None) -> str:
     """
     将EEG数据写入EDF格式
-    
+
     Parameters
     ----------
     raw : mne.io.BaseRaw
@@ -232,7 +232,7 @@ def write_eeg_to_edf(raw: 'mne.io.BaseRaw',
         是否显示详细输出
     sampling_rate : float, optional
         目标采样率（Hz），默认None（保持原始采样率）
-        
+
     Returns
     -------
     str

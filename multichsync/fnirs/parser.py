@@ -1,14 +1,13 @@
-import re
-import math
 import datetime as _dt
+import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
+import h5py
 import numpy as np
 import pandas as pd
-import h5py
-
 
 _VLEN_STR = h5py.string_dtype(encoding="utf-8")
 
@@ -246,10 +245,10 @@ def _read_data_table(lines: list[str], data_start_idx: int) -> tuple[np.ndarray,
 def parse_fnirs_header(txt_path):
     """
     解析fNIRS TXT文件头部信息
-    
+
     参数:
         txt_path: TXT文件路径
-        
+
     返回:
         meta: 元数据字典
         channel_pairs: 通道对列表 [(source, detector), ...]
@@ -257,13 +256,13 @@ def parse_fnirs_header(txt_path):
         data_matrix: 数据矩阵 (时间点 × 通道数)
     """
     parsed = parse_shimadzu_txt(txt_path)
-    
+
     # Convert to old interface format
     meta = parsed.meta
     channel_pairs = parsed.channel_pairs
     times = parsed.times
     data_matrix = parsed.data_matrix
-    
+
     return meta, channel_pairs, times, data_matrix
 
 
@@ -387,11 +386,11 @@ def _processed_label_map(signal_labels: list[str]) -> list[str]:
 def load_coordinates(src_coords_csv, det_coords_csv):
     """
     加载source和detector坐标
-    
+
     参数:
         src_coords_csv: source坐标CSV文件路径
         det_coords_csv: detector坐标CSV文件路径
-        
+
     返回:
         sourcePos3D: source坐标数组 (N×3)
         detectorPos3D: detector坐标数组 (M×3)
@@ -401,7 +400,7 @@ def load_coordinates(src_coords_csv, det_coords_csv):
     # Call new load_coordinates function, assuming prefixes T and R
     source_pos_3d, source_labels, source_map = _load_coordinates_with_map(src_coords_csv, expected_prefix="T")
     detector_pos_3d, detector_labels, detector_map = _load_coordinates_with_map(det_coords_csv, expected_prefix="R")
-    
+
     return source_pos_3d, detector_pos_3d, source_labels, detector_labels
 
 

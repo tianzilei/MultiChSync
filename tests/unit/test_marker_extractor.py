@@ -7,10 +7,8 @@ Tests import from multichsync.marker.extractor:
 - extract_fnirs_marker
 """
 
-import pytest
-import pandas as pd
 import numpy as np
-from pathlib import Path
+import pandas as pd
 
 
 class TestExtractBiopacMarker:

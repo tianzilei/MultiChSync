@@ -7,9 +7,9 @@ due to issues with processed HbT channels or missing wavelength information.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Sequence
-import re
 
 import h5py
 import numpy as np
@@ -171,7 +171,6 @@ def patch_snirf_for_mne(
         if not data_names:
             raise ValueError("No /nirs/data# groups found")
 
-        patched_any = False
 
         for data_name in data_names:
             data_grp = nirs[data_name]
@@ -204,7 +203,6 @@ def patch_snirf_for_mne(
             if not drop_indices:
                 continue
 
-            patched_any = True
             kept = mts[:, keep_indices]
             dropped = mts[:, drop_indices]
 
@@ -260,7 +258,7 @@ def patch_snirf_inplace(
         Path to patched file (same as input).
     """
     snirf_path = Path(snirf_path)
-    
+
     with h5py.File(snirf_path, "r+") as f:
         if "nirs" not in f:
             raise ValueError("Missing /nirs group")
@@ -280,7 +278,6 @@ def patch_snirf_inplace(
         if not data_names:
             raise ValueError("No /nirs/data# groups found")
 
-        patched_any = False
 
         for data_name in data_names:
             data_grp = nirs[data_name]
@@ -313,7 +310,6 @@ def patch_snirf_inplace(
             if not drop_indices:
                 continue
 
-            patched_any = True
             kept = mts[:, keep_indices]
             dropped = mts[:, drop_indices]
 

@@ -2,9 +2,10 @@
 Integration tests for quality assessment batch processing workflows.
 """
 
-import pytest
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+import pytest
 
 # Import the batch processing function from multichsync.quality
 from multichsync.quality import batch_process_snirf_folder

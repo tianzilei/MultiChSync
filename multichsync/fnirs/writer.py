@@ -1,8 +1,17 @@
-import numpy as np
-import h5py
-from typing import Any
 from pathlib import Path
-from .parser import ParsedTxt, _write_scalar_str, _write_scalar_int, _VLEN_STR, _infer_measurements_per_channel, _processed_label_map
+from typing import Any
+
+import h5py
+import numpy as np
+
+from .parser import (
+    _VLEN_STR,
+    ParsedTxt,
+    _infer_measurements_per_channel,
+    _processed_label_map,
+    _write_scalar_int,
+    _write_scalar_str,
+)
 
 
 def build_stim_from_mark(times: np.ndarray, marks: list[str], *, ignore_values: Any = ("", "0", "0Z")) -> dict[str, np.ndarray]:
@@ -50,7 +59,7 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
                 include_aux_count: bool = True):
     """
     写入SNIRF文件
-    
+
     参数:
         output_path: 输出文件路径
         meta: 元数据字典
@@ -78,13 +87,13 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
             measurements_per_channel = 3
         else:
             measurements_per_channel = 1
-    
+
     # Generate signal labels
     if measurements_per_channel == 3:
         signal_labels = ["oxyHb", "deoxyHb", "totalHb"] * (n_cols // 3)
     else:
         signal_labels = [f"ProcessedData{i+1}" for i in range(n_cols)]
-    
+
     # Create ParsedTxt object
     parsed = ParsedTxt(
         meta=meta,
@@ -96,7 +105,7 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
         mark_values=[""] * len(times),
         count_values=[""] * len(times),
     )
-    
+
     # Call core writing function
     _write_snirf_core(
         output_path=output_path,
@@ -113,7 +122,7 @@ def write_snirf(output_path, meta, channel_pairs, times, data_matrix, sourcePos3
         include_stim_from_mark=include_stim_from_mark,
         include_aux_count=include_aux_count,
     )
-    
+
     print(f"SNIRF file saved: {output_path}")
 
 
@@ -214,7 +223,7 @@ def _write_snirf_core(
         data_grp.create_dataset("time", data=np.asarray(times, dtype=np.float64), dtype="f8", **time_kwargs)
 
         ml_index = 1
-        for pair_idx, (src_raw, det_raw) in enumerate(parsed.channel_pairs):
+        for _pair_idx, (src_raw, det_raw) in enumerate(parsed.channel_pairs):
             if src_raw not in source_map:
                 raise KeyError(f"Source index {src_raw} from TXT channel pairs not found in source CSV labels.")
             if det_raw not in detector_map:

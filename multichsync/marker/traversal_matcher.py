@@ -18,15 +18,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import warnings
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
-
 
 # ──────────────────────────────────────────────────────────────────────
 # Data structures
@@ -40,14 +38,14 @@ class TraversalMatchResult:
     anchor_name: str
     """Name of the anchor (reference) device."""
 
-    device_names: List[str]
+    device_names: list[str]
     """All device names in the order they were processed."""
 
-    assignments: Dict[str, np.ndarray]
+    assignments: dict[str, np.ndarray]
     """For each device, an array of shape (n_groups,) giving the marker
     timestamp assigned to each consensus group, or NaN for gaps."""
 
-    group_indices: Dict[str, np.ndarray]
+    group_indices: dict[str, np.ndarray]
     """For each device, the index into the original marker array for each
     group, or -1 for gaps."""
 
@@ -67,13 +65,13 @@ class TraversalMatchResult:
     n_matched_groups: int
     """Number of groups that have ≥2 devices contributing."""
 
-    gaps: Dict[str, List[int]]
+    gaps: dict[str, list[int]]
     """For each device, list of group indices where that device has a gap."""
 
-    shift_history: Dict[str, List[Tuple[int, float]]]
+    shift_history: dict[str, list[tuple[int, float]]]
     """For each (anchor, other) pair, the shifts tried and their costs."""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "anchor": self.anchor_name,
             "devices": self.device_names,
@@ -81,7 +79,7 @@ class TraversalMatchResult:
             "mean_distance": float(self.mean_distance),
             "n_groups": self.n_groups,
             "n_matched_groups": self.n_matched_groups,
-            "gaps": {k: v for k, v in self.gaps.items()},
+            "gaps": dict(self.gaps.items()),
         }
 
 
@@ -90,12 +88,12 @@ class _ShiftEval:
     """Internal helper: result of evaluating one shift."""
 
     shift: int
-    distances: List[float]
+    distances: list[float]
     mean_dist: float
     total_dist: float
     n_matched: int
-    a_idxs: List[int]
-    b_idxs: List[int]
+    a_idxs: list[int]
+    b_idxs: list[int]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -130,9 +128,9 @@ def _infer_device_type(filename: str) -> str:
 
 
 def _load_and_merge_sessions(
-    file_paths: List[str],
-    device_names: Optional[List[str]] = None,
-) -> Dict[str, np.ndarray]:
+    file_paths: list[str],
+    device_names: list[str] | None = None,
+) -> dict[str, np.ndarray]:
     """
     Load marker CSV files, group by device type/name, merge sessions
     within each device group, and cap the merged length.
@@ -163,10 +161,10 @@ def _load_and_merge_sessions(
         Device name → sorted, possibly merged, possibly capped 1-D array
         of marker timestamps.
     """
-    from .matcher import load_marker_csv_enhanced, DeviceInfo
+    from .matcher import DeviceInfo, load_marker_csv_enhanced
 
     # 1. Load all files, tagging each with a group key
-    loaded: List[Tuple[str, DeviceInfo]] = []
+    loaded: list[tuple[str, DeviceInfo]] = []
     for i, path in enumerate(file_paths):
         key = (
             device_names[i]
@@ -180,12 +178,12 @@ def _load_and_merge_sessions(
     max_n = max(len(dev.timestamps_raw) for _, dev in loaded)
 
     # 3. Group by key
-    groups: Dict[str, List[DeviceInfo]] = defaultdict(list)
+    groups: dict[str, list[DeviceInfo]] = defaultdict(list)
     for key, dev in loaded:
         groups[key].append(dev)
 
     # 4. Merge & cap per group
-    result: Dict[str, np.ndarray] = {}
+    result: dict[str, np.ndarray] = {}
     for key, devs in groups.items():
         if len(devs) == 1:
             merged = devs[0].timestamps_raw.copy()
@@ -215,9 +213,9 @@ def _load_and_merge_sessions(
 
 
 def match_traversal(
-    marker_dict: Dict[str, np.ndarray],
+    marker_dict: dict[str, np.ndarray],
     *,
-    anchor: Optional[str] = None,
+    anchor: str | None = None,
     max_time_diff: float = 3.0,
     gap_penalty: float = 1e6,
     random_restarts: int = 5,
@@ -257,7 +255,7 @@ def match_traversal(
         )
 
     # Sort each device's timestamps
-    sorted_dict: Dict[str, np.ndarray] = {}
+    sorted_dict: dict[str, np.ndarray] = {}
     for name, ts in marker_dict.items():
         t = np.asarray(ts, dtype=float).ravel()
         t.sort()
@@ -279,11 +277,11 @@ def match_traversal(
     n_anchor = len(t_anchor)
 
     # ── Match each other device to the anchor ─────────────────────────
-    assignments: Dict[str, np.ndarray] = {anchor: t_anchor.copy()}
-    group_indices: Dict[str, np.ndarray] = {
+    assignments: dict[str, np.ndarray] = {anchor: t_anchor.copy()}
+    group_indices: dict[str, np.ndarray] = {
         anchor: np.arange(n_anchor, dtype=int)
     }
-    shift_history: Dict[str, List[Tuple[int, float]]] = {}
+    shift_history: dict[str, list[tuple[int, float]]] = {}
 
     for dev_name in device_names[1:]:
         t_dev = sorted_dict[dev_name]
@@ -332,7 +330,7 @@ def match_traversal(
     n_matched = int(valid_mask.sum())
 
     # ── Gap detection ─────────────────────────────────────────────────
-    gaps: Dict[str, List[int]] = {}
+    gaps: dict[str, list[int]] = {}
     for d in device_names:
         gap_idxs = np.where(group_indices[d] == -1)[0].tolist()
         if gap_idxs:
@@ -380,7 +378,7 @@ def _find_best_shift(
     shift_min = -n_b + 1  # last B marker paired with first A marker
     shift_max = n_a - 1   # first B marker paired with last A marker
 
-    best: Optional[_ShiftEval] = None
+    best: _ShiftEval | None = None
 
     # ── Exhaustive traversal over all shifts ─────────────────────────
     for shift in range(shift_min, shift_max + 1):
@@ -435,9 +433,9 @@ def _evaluate_shift(
     """
     n_a = len(t_a)
     n_b = len(t_b)
-    distances: List[float] = []
-    a_idxs: List[int] = []
-    b_idxs: List[int] = []
+    distances: list[float] = []
+    a_idxs: list[int] = []
+    b_idxs: list[int] = []
 
     for i in range(n_a):
         j = i + shift
@@ -480,8 +478,8 @@ def _evaluate_shift(
 
 
 def match_traversal_from_files(
-    file_paths: List[str],
-    device_names: Optional[List[str]] = None,
+    file_paths: list[str],
+    device_names: list[str] | None = None,
     *,
     max_time_diff: float = 3.0,
     gap_penalty: float = 1e6,
@@ -564,7 +562,7 @@ def _save_timeline_csv(
     prefix: str,
 ) -> str:
     """Build a timeline CSV with one row per consensus group."""
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "group": np.arange(result.n_groups, dtype=int),
         "mean_distance": result.per_marker_distances,
     }
@@ -620,7 +618,7 @@ def _find_converted_data_path(
     data_file_name: str,
     device: str,
     convert_base_dir: str = "Data/convert",
-) -> Optional[str]:
+) -> str | None:
     """
     Locate the converted data file corresponding to an info-report row.
 
@@ -652,7 +650,7 @@ def _find_marker_csv(
     data_file_name: str,
     device: str,
     marker_base_dir: str = "Data/marker",
-) -> Optional[str]:
+) -> str | None:
     """
     Locate the marker CSV file that corresponds to a data file listed in an
     info report row.
@@ -704,9 +702,9 @@ def _find_marker_csv(
 
 
 def _build_stacked_timelines_from_info(
-    info_rows: List[Dict[str, Any]],
+    info_rows: list[dict[str, Any]],
     marker_base_dir: str = "Data/marker",
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """
     Read info-report rows and build **stacked per-device timelines**.
 
@@ -744,12 +742,12 @@ def _build_stacked_timelines_from_info(
     from .matcher import load_marker_csv_enhanced
 
     # Group rows by device
-    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in info_rows:
         device = str(row.get("device", "unknown"))
         grouped[device].append(row)
 
-    result: Dict[str, Dict[str, Any]] = {}
+    result: dict[str, dict[str, Any]] = {}
 
     # Sort helper: numeric sequence_id so "2" comes before "10"
     def _seq_sort_key(sid: str) -> int:
@@ -759,7 +757,7 @@ def _build_stacked_timelines_from_info(
             return 9999
 
     # Helper: parse a session duration from the info row
-    def _parse_session_duration(row: Dict[str, Any], marker_count: int, marker_span: float) -> float:
+    def _parse_session_duration(row: dict[str, Any], marker_count: int, marker_span: float) -> float:
         raw_dur = row.get("sequence_duration")
         try:
             dur = float(raw_dur) if raw_dur not in (None, "", "nan", "NaN") else 0.0
@@ -777,8 +775,8 @@ def _build_stacked_timelines_from_info(
         # Sort sessions by sequence_id numerically ("2" before "10")
         rows.sort(key=lambda r: _seq_sort_key(str(r.get("sequence_id", "0"))))
 
-        sessions: List[Dict[str, Any]] = []
-        all_offsets: List[np.ndarray] = []
+        sessions: list[dict[str, Any]] = []
+        all_offsets: list[np.ndarray] = []
         cumulative_offset = 0.0
 
         for row in rows:
@@ -851,7 +849,7 @@ def _build_stacked_timelines_from_info(
 
 
 def _calc_session_boundaries(
-    sessions: List[Dict[str, Any]],
+    sessions: list[dict[str, Any]],
     stretch_factor: float = 1.0,
 ) -> np.ndarray:
     """Return cumulative session boundary times, stretched: [0, d1, d1+d2, ..., total]"""
@@ -894,12 +892,12 @@ def _align_stacked_timeline(
     *,
     ref_duration: float,
     other_duration: float,
-    ref_sessions: List[Dict[str, Any]],
-    other_sessions: List[Dict[str, Any]],
+    ref_sessions: list[dict[str, Any]],
+    other_sessions: list[dict[str, Any]],
     max_time_diff: float,
     gap_penalty: float,
     snap_threshold: float = 5.0,
-) -> Tuple[float, float, int, List[int], List[int], np.ndarray]:
+) -> tuple[float, float, int, list[int], list[int], np.ndarray]:
     """
     Align *t_other* to *t_ref* by **proportional stretching** with
     **session-boundary snapping** (±*snap_threshold* s).
@@ -936,8 +934,8 @@ def _align_stacked_timeline(
     n_ref = len(t_ref)
     used = np.zeros(len(aligned), dtype=bool)
 
-    a_idxs: List[int] = []
-    b_idxs: List[int] = []
+    a_idxs: list[int] = []
+    b_idxs: list[int] = []
     total_dist = 0.0
     n_matched = 0
 
@@ -945,7 +943,7 @@ def _align_stacked_timeline(
         ref_t = t_ref[i]
         pos = np.searchsorted(sorted_aligned, ref_t)
 
-        candidates: List[Tuple[int, float]] = []
+        candidates: list[tuple[int, float]] = []
         for offset in (-1, 0, 1):
             p = pos + offset
             if 0 <= p < len(sorted_aligned) and not used[p]:
@@ -969,7 +967,7 @@ def _align_stacked_timeline(
 
 def _match_one_subject(
     subject_id: str,
-    rows: List[Dict[str, Any]],
+    rows: list[dict[str, Any]],
     *,
     marker_base_dir: str,
     convert_base_dir: str,
@@ -978,7 +976,7 @@ def _match_one_subject(
     random_restarts: int,
     n_refinement_rounds: int,
     rng_seed: int,
-) -> Optional[TraversalMatchResult]:
+) -> TraversalMatchResult | None:
     """
     Run stacked-timeline matching for a **single subject**.
 
@@ -1034,11 +1032,11 @@ def _match_one_subject(
     all_devices = sorted(valid_devices, key=lambda x: (x[1], x[2]), reverse=True)
     device_names_ordered = [ref_name] + [dn for dn, _, _ in all_devices if dn != ref_name]
 
-    assignments: Dict[str, np.ndarray] = {ref_name: t_ref.copy()}
-    group_indices: Dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
-    shift_history: Dict[str, List[Tuple[int, float]]] = {}
+    assignments: dict[str, np.ndarray] = {ref_name: t_ref.copy()}
+    group_indices: dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
+    shift_history: dict[str, list[tuple[int, float]]] = {}
     # drift_params: {device_name: {"offset": float, "scale": float}}
-    drift_params: Dict[str, Dict[str, float]] = {ref_name: {"offset": 0.0, "scale": 1.0}}
+    drift_params: dict[str, dict[str, float]] = {ref_name: {"offset": 0.0, "scale": 1.0}}
 
     for other_name in device_names_ordered[1:]:
         other_info = stack[other_name]
@@ -1122,7 +1120,7 @@ def _match_one_subject(
     mean_distance = float(np.mean(per_marker_distances[valid_mask])) if valid_mask.any() else 0.0
     n_matched = int(valid_mask.sum())
 
-    gaps: Dict[str, List[int]] = {}
+    gaps: dict[str, list[int]] = {}
     for d in device_names_ordered:
         gs = np.where(group_indices[d] == -1)[0].tolist()
         if gs:
@@ -1149,8 +1147,8 @@ def _match_one_subject(
 def _save_subject_outputs(
     subject_id: str,
     result: TraversalMatchResult,
-    rows: List[Dict[str, Any]],
-    stack: Dict[str, Dict[str, Any]],
+    rows: list[dict[str, Any]],
+    stack: dict[str, dict[str, Any]],
     *,
     marker_base_dir: str,
     convert_base_dir: str,
@@ -1160,7 +1158,7 @@ def _save_subject_outputs(
     save_csv: bool,
     save_json: bool,
     save_fig: bool = True,
-    drift_params: Optional[Dict[str, Dict[str, float]]] = None,
+    drift_params: dict[str, dict[str, float]] | None = None,
 ) -> None:
     """Save per-subject output files (matchcrop-aligned compatible)."""
     prefix = f"{output_prefix}_subject-{subject_id}"
@@ -1189,7 +1187,7 @@ def _save_subject_outputs(
                 drift_params[d] = {"offset": result.shift_history.get(d, [(0, 0.0)])[0][0], "scale": 1.0}
 
     # Build device_info
-    device_info_list: List[Dict[str, Any]] = []
+    device_info_list: list[dict[str, Any]] = []
     for dev_name in device_names:
         dev_stack = stack[dev_name]
         dev_rows = [r for r in rows
@@ -1307,7 +1305,7 @@ def match_traversal_from_info(
     save_json: bool = True,
     save_csv: bool = True,
     save_fig: bool = True,
-) -> Dict[str, TraversalMatchResult]:
+) -> dict[str, TraversalMatchResult]:
     """
     Read ``marker info`` reports and run **per-subject stacked-timeline
     traversal matching**.
@@ -1370,7 +1368,7 @@ def match_traversal_from_info(
             f"No subject_*_marker_report.csv files found in {info_dir}"
         )
 
-    all_rows: List[Dict[str, Any]] = []
+    all_rows: list[dict[str, Any]] = []
     for rp in report_files:
         try:
             df = pd.read_csv(rp, encoding="utf-8-sig")
@@ -1386,10 +1384,11 @@ def match_traversal_from_info(
     # Info reports can have duplicate (file_name, device, sequence_id)
     # entries (e.g. ecg: one row with n_markers=0, another with actual
     # markers).  Keep the row with the highest n_markers.
-    dedup_key = lambda r: (str(r.get("file_name", "")),
-                           str(r.get("device", "")),
-                           str(r.get("sequence_id", "")))
-    deduped: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    def dedup_key(r):
+        return (str(r.get("file_name", "")),
+                               str(r.get("device", "")),
+                               str(r.get("sequence_id", "")))
+    deduped: dict[tuple[str, str, str], dict[str, Any]] = {}
     for row in all_rows:
         k = dedup_key(row)
         existing = deduped.get(k)
@@ -1405,14 +1404,14 @@ def match_traversal_from_info(
     # BrainVision: .eeg is binary data; a .vhdr with the same stem is the
     # canonical entry.  EEGLAB: .fdt is binary data; .set is canonical.
     # If both exist, keep only the header file.
-    eeg_stems: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    eeg_stems: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in all_rows:
         fn = str(row.get("file_name", ""))
         if fn.lower().endswith((".eeg", ".fdt", ".vhdr", ".set")):
             stem = Path(fn).stem
             eeg_stems[stem].append(row)
     secondary_exts = (".eeg", ".fdt")
-    filtered: List[Dict[str, Any]] = []
+    filtered: list[dict[str, Any]] = []
     for row in all_rows:
         fn = str(row.get("file_name", ""))
         ext = Path(fn).suffix.lower()
@@ -1437,14 +1436,14 @@ def match_traversal_from_info(
     # "task-picture" — same recording).  Keep only the first occurrence.
     # NOTE: seen dict keyed by (subject_id, device, sequence_id) to avoid
     # cross-subject collisions.
-    subject_groups_prelim: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    subject_groups_prelim: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in all_rows:
         sid = str(row.get("subject_id", "unknown"))
         subject_groups_prelim[sid].append(row)
 
-    sid_deduped: List[Dict[str, Any]] = []
-    for sid, srows in subject_groups_prelim.items():
-        seen_local: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    sid_deduped: list[dict[str, Any]] = []
+    for _sid, srows in subject_groups_prelim.items():
+        seen_local: dict[tuple[str, str], dict[str, Any]] = {}
         for row in srows:
             key = (str(row.get("device", "")), str(row.get("sequence_id", "")))
             nm = int(row.get("n_markers", 0))
@@ -1472,14 +1471,14 @@ def match_traversal_from_info(
     all_rows = sid_deduped
 
     # ── 2. Group by subject_id ─────────────────────────────────────────
-    subject_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    subject_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in all_rows:
         sid = str(row.get("subject_id", "unknown"))
         subject_groups[sid].append(row)
 
     print(f"\nFound {len(subject_groups)} subject(s) to process:")
     for sid, srows in sorted(subject_groups.items()):
-        devices_in = set(str(r.get("device", "")) for r in srows)
+        devices_in = {str(r.get("device", "")) for r in srows}
         # Warn about suspiciously many rows for a device (e.g. .eeg/.vhdr double-counting)
         dev_counts = defaultdict(int)
         for r in srows:
@@ -1492,7 +1491,7 @@ def match_traversal_from_info(
         print(f"  Subject {sid}: {len(srows)} rows, devices={sorted(devices_in)}")
 
     # ── 3. Process each subject independently ──────────────────────────
-    results: Dict[str, TraversalMatchResult] = {}
+    results: dict[str, TraversalMatchResult] = {}
 
     for subject_id in sorted(subject_groups):
         rows = subject_groups[subject_id]
@@ -1535,7 +1534,7 @@ def match_traversal_from_info(
     total = len(results)
     skipped = len(subject_groups) - total
     print(f"\n{'='*50}")
-    print(f"Per-subject matching complete:")
+    print("Per-subject matching complete:")
     print(f"  Processed: {total} subject(s)")
     if skipped:
         print(f"  Skipped:   {skipped} subject(s) (< 2 devices)")
@@ -1552,7 +1551,7 @@ def match_traversal_from_info(
 
 def _save_stacked_timeline_csv(
     result: TraversalMatchResult,
-    stack: Dict[str, Dict[str, Any]],
+    stack: dict[str, dict[str, Any]],
     output_dir: str,
     prefix: str,
 ) -> str:
@@ -1560,7 +1559,7 @@ def _save_stacked_timeline_csv(
     Save a stacked timeline CSV showing each device's (stacked) marker
     assignment per consensus group, annotated with session membership.
     """
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "group": np.arange(result.n_groups, dtype=int),
         "mean_distance": result.per_marker_distances,
     }
@@ -1583,7 +1582,7 @@ def _save_stacked_timeline_csv(
                 if midx >= 0:
                     # Find which session this marker index falls in
                     cum = 0
-                    for sidx, sess in enumerate(sessions):
+                    for _sidx, sess in enumerate(sessions):
                         cum += sess["n_markers"]
                         if midx < cum:
                             col[g] = sess["sequence_id"]
@@ -1599,7 +1598,7 @@ def _save_stacked_timeline_csv(
 
 def _save_matched_timeline_figure(
     result: TraversalMatchResult,
-    stack: Dict[str, Dict[str, Any]],
+    stack: dict[str, dict[str, Any]],
     subject_id: str,
     output_dir: str,
     prefix: str,
@@ -1614,7 +1613,6 @@ def _save_matched_timeline_figure(
     data that is written to ``{prefix}_timeline.csv``).
     """
     import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
     cmap_bar = plt.colormaps.get_cmap("tab10")
 
     device_names = [d for d in result.device_names if d in result.assignments]
@@ -1688,9 +1686,9 @@ def _save_matched_timeline_figure(
         _bar_h = 0.35
         # Use _gap_info stored by match_baseline for correct session boundaries
         _gi = getattr(result, "_gap_info", {}).get(dev_name)
-        _s0: Dict[int, float] = {}
-        _s1: Dict[int, float] = {}
-        _sessions_labels: List[Dict] = []
+        _s0: dict[int, float] = {}
+        _s1: dict[int, float] = {}
+        _sessions_labels: list[dict] = []
 
         if _gi is not None:
             # _gi is either (starts, gaps, durs, nm) [alignment-groups]
@@ -1883,11 +1881,11 @@ def _save_matched_timeline_figure(
 
 def _save_stacked_metadata_json(
     result: TraversalMatchResult,
-    stack: Dict[str, Dict[str, Any]],
-    device_info_list: List[Dict[str, Any]],
-    timeline_metadata: Dict[str, Any],
-    device_names: List[str],
-    drift_offsets: Dict[str, float],
+    stack: dict[str, dict[str, Any]],
+    device_info_list: list[dict[str, Any]],
+    timeline_metadata: dict[str, Any],
+    device_names: list[str],
+    drift_offsets: dict[str, float],
     output_dir: str,
     prefix: str,
 ) -> str:
@@ -1935,13 +1933,12 @@ def _save_stacked_metadata_json(
 
 def match_traversal_cli(args: Any) -> None:
     """Entry point called from ``multichsync marker traversal-match``."""
-    from .matcher import load_marker_csv_enhanced
 
     # ── Detect input mode ──────────────────────────────────────────────
     info_dir = getattr(args, "info_dir", None)
     if info_dir:
         # === Mode A: per-subject stacked-timeline matching ===
-        results = match_traversal_from_info(
+        match_traversal_from_info(
             info_dir,
             marker_base_dir=getattr(args, "marker_base_dir", "Data/marker"),
             convert_base_dir=getattr(args, "convert_base_dir", "Data/convert"),
@@ -1959,8 +1956,8 @@ def match_traversal_cli(args: Any) -> None:
         return
     else:
         # === Mode B: direct file list (original behaviour) ===
-        file_paths: List[str] = []
-        device_names: Optional[List[str]] = None
+        file_paths: list[str] = []
+        device_names: list[str] | None = None
 
         if args.input_dir:
             input_dir = Path(args.input_dir)
@@ -2001,7 +1998,7 @@ def match_traversal_cli(args: Any) -> None:
 
         # ── Print summary ─────────────────────────────────────────────────
         print(f"\n{'='*50}")
-        print(f"Traversal matching complete")
+        print("Traversal matching complete")
         print(f"{'='*50}")
         print(f"  Reference device:  {result.anchor_name}")
         print(f"  Devices:           {', '.join(result.device_names)}")
@@ -2021,10 +2018,10 @@ def match_traversal_cli(args: Any) -> None:
 
 
 def _group_sessions_by_length(
-    ref_sessions: List[Dict[str, Any]],
-    other_sessions: List[Dict[str, Any]],
+    ref_sessions: list[dict[str, Any]],
+    other_sessions: list[dict[str, Any]],
     snap_threshold: float = 5.0,
-) -> Tuple[List[List[int]], List[float]]:
+) -> tuple[list[list[int]], list[float]]:
     """
     Greedily group *other_sessions* so each group's total duration
     approximates a reference session (within ±*snap_threshold*).
@@ -2038,14 +2035,14 @@ def _group_sessions_by_length(
     ref_durs = [s["duration"] for s in ref_sessions]
     other_durs = [s["duration"] for s in other_sessions]
 
-    groups: List[List[int]] = []
-    targets: List[float] = []
+    groups: list[list[int]] = []
+    targets: list[float] = []
     oi = 0  # index into other_sessions
 
     for rd in ref_durs:
         if oi >= len(other_durs):
             break
-        group: List[int] = []
+        group: list[int] = []
         group_sum = 0.0
         # Keep adding sessions while group_sum < target (or close)
         while oi < len(other_durs):
@@ -2078,11 +2075,11 @@ def _group_sessions_by_length(
 
 def _reposition_by_groups(
     t_other: np.ndarray,
-    other_sessions: List[Dict[str, Any]],
-    groups: List[List[int]],
-    targets: List[float],
+    other_sessions: list[dict[str, Any]],
+    groups: list[list[int]],
+    targets: list[float],
     cumulative_offset: float,
-) -> Tuple[np.ndarray, List[float]]:
+) -> tuple[np.ndarray, list[float]]:
     """
     Reposition *other* markers by grouping sessions to match *targets*.
 
@@ -2109,7 +2106,7 @@ def _reposition_by_groups(
         return t_other.copy(), []
 
     # Build original per-session marker arrays
-    sess_markers: List[np.ndarray] = []
+    sess_markers: list[np.ndarray] = []
     idx = 0
     for s in other_sessions:
         n = s["n_markers"]
@@ -2119,8 +2116,8 @@ def _reposition_by_groups(
             sess_markers.append(np.array([], dtype=float))
         idx += n
 
-    gap_positions: List[float] = [0.0] * len(other_sessions)
-    new_markers: List[np.ndarray] = []
+    gap_positions: list[float] = [0.0] * len(other_sessions)
+    new_markers: list[np.ndarray] = []
     current_offset = 0.0
 
     for g_idx, group in enumerate(groups):
@@ -2158,13 +2155,13 @@ def _reposition_by_groups(
 def _evaluate_middle_shift(
     t_ref: np.ndarray,
     repositioned: np.ndarray,
-    sessions: List[Dict[str, Any]],
-    gap_positions: List[float],
-    group_spec: Tuple[int, int, int],  # (group_idx, start_session_idx, end_session_idx)
+    sessions: list[dict[str, Any]],
+    gap_positions: list[float],
+    group_spec: tuple[int, int, int],  # (group_idx, start_session_idx, end_session_idx)
     mid_shift: float,
     max_time_diff: float,
     gap_penalty: float,
-) -> Tuple[float, np.ndarray]:
+) -> tuple[float, np.ndarray]:
     """
     Shift the middle sessions of a group by *mid_shift* seconds and
     re-evaluate match quality.  The first and last sessions in the group
@@ -2213,13 +2210,13 @@ def _evaluate_middle_shift(
 
 
 def _force_pivot_assignments(
-    assignments: Dict[str, np.ndarray],
-    group_indices: Dict[str, np.ndarray],
+    assignments: dict[str, np.ndarray],
+    group_indices: dict[str, np.ndarray],
     t_anchor: np.ndarray,
-    session_dict: Dict[str, List[Dict[str, Any]]],
-    ref_sessions: List[Dict[str, Any]],
+    session_dict: dict[str, list[dict[str, Any]]],
+    ref_sessions: list[dict[str, Any]],
     anchor: str,
-    device_names: List[str],
+    device_names: list[str],
 ) -> None:
     """
     Post-processing force-alignment of pivot sessions at the assignment level.
@@ -2259,7 +2256,7 @@ def _force_pivot_assignments(
     device_names : list of str
         All device names in order.
     """
-    pivot_condition: Dict[str, str] = {
+    pivot_condition: dict[str, str] = {
         "fnirs": "ses02",
         "ecg": "ses02",
         "eeg": "ses03",
@@ -2276,7 +2273,7 @@ def _force_pivot_assignments(
     n_anchor = len(t_anchor)
 
     # ── Helpers: find first marker index of a session, return None if missing ──
-    def _first_marker_idx(sessions: List[Dict[str, Any]], sid: str) -> Optional[int]:
+    def _first_marker_idx(sessions: list[dict[str, Any]], sid: str) -> int | None:
         cum = 0
         for s in sessions:
             n = max(s.get("n_markers", 0), 0)
@@ -2287,7 +2284,7 @@ def _force_pivot_assignments(
 
     # ── Find pivot first-marker local index for each device ──────
     # local_idx = position within the device's own marker array (sorted_dict)
-    pivot_local: Dict[str, int] = {}
+    pivot_local: dict[str, int] = {}
     for dev_name, target_sid in pivot_condition.items():
         if dev_name not in session_dict:
             return
@@ -2299,7 +2296,7 @@ def _force_pivot_assignments(
     # ── Map local marker index → anchor marker index via group_indices ──
     # For each pivot device, find which anchor index its pivot first marker
     # was matched to.  group_indices[dev][i] = local marker index at anchor i.
-    pivot_anchor_idx: Dict[str, int] = {}
+    pivot_anchor_idx: dict[str, int] = {}
     for dev_name in pivot_condition:
         if dev_name not in group_indices:
             return
@@ -2381,10 +2378,10 @@ def _force_pivot_assignments(
 
 
 def match_baseline(
-    marker_dict: Dict[str, np.ndarray],
-    session_dict: Dict[str, List[Dict[str, Any]]],
+    marker_dict: dict[str, np.ndarray],
+    session_dict: dict[str, list[dict[str, Any]]],
     *,
-    anchor: Optional[str] = None,
+    anchor: str | None = None,
     max_time_diff: float = 10.0,
     gap_penalty: float = 1e6,
     snap_threshold: float = 5.0,
@@ -2413,7 +2410,7 @@ def match_baseline(
     if len(marker_dict) < 2:
         raise ValueError(f"Need at least 2 devices, got {len(marker_dict)}")
 
-    sorted_dict: Dict[str, np.ndarray] = {}
+    sorted_dict: dict[str, np.ndarray] = {}
     for name, ts in marker_dict.items():
         t = np.asarray(ts, dtype=float).ravel()
         # Do NOT globally sort — preserve per-session order so that
@@ -2439,7 +2436,7 @@ def match_baseline(
     t_anchor_raw = sorted_dict[anchor]
     ref_sessions = session_dict.get(anchor, [])
 
-    ref_dur = sum(s["duration"] for s in ref_sessions)
+    sum(s["duration"] for s in ref_sessions)
 
     # Compute max duration across ALL devices (for gap capping).
     # Also compute the max duration of 0‑marker devices (ecg continuous
@@ -2450,7 +2447,7 @@ def match_baseline(
         d for d, n in zip(_all_durs, device_names)
         if len(sorted_dict.get(n, [])) == 0
     ]
-    gap_cap = max(_markerless_durs) if _markerless_durs else max_dur
+    max(_markerless_durs) if _markerless_durs else max_dur
 
     # Reposition anchor markers — stretch to max_dur if needed
     _anchor_targets = [s["duration"] for s in ref_sessions]
@@ -2467,7 +2464,7 @@ def match_baseline(
     n_anchor = len(t_anchor)
 
     # Store gap positions per device for session bar computation
-    _all_gap_info: Dict[str, Tuple[List[float], List[float], List[int]]] = {}
+    _all_gap_info: dict[str, tuple[list[float], list[float], list[int]]] = {}
     # Anchor gap info: no gaps, each session stands alone
     _all_gap_info[anchor] = (
         [0.0] * len(ref_sessions),
@@ -2475,13 +2472,13 @@ def match_baseline(
         [s["n_markers"] for s in ref_sessions],
     )
 
-    assignments: Dict[str, np.ndarray] = {anchor: t_anchor.copy()}
-    group_indices: Dict[str, np.ndarray] = {anchor: np.arange(n_anchor, dtype=int)}
-    shift_history: Dict[str, List[Tuple[int, float]]] = {}
+    assignments: dict[str, np.ndarray] = {anchor: t_anchor.copy()}
+    group_indices: dict[str, np.ndarray] = {anchor: np.arange(n_anchor, dtype=int)}
+    shift_history: dict[str, list[tuple[int, float]]] = {}
 
     # Storage for multi-device boundary consensus
-    _repos_store: Dict[str, Tuple[np.ndarray, List]] = {}
-    _repos_order: List[str] = []
+    _repos_store: dict[str, tuple[np.ndarray, list]] = {}
+    _repos_order: list[str] = []
 
     for dev_name in device_names[1:]:
         t_dev = sorted_dict[dev_name]
@@ -2642,8 +2639,8 @@ def match_baseline(
         sort_idx = np.argsort(final_aligned)
         sorted_final = final_aligned[sort_idx]
         used = np.zeros(len(final_aligned), dtype=bool)
-        a_idxs: List[int] = []
-        b_idxs: List[int] = []
+        a_idxs: list[int] = []
+        b_idxs: list[int] = []
         total_dist = 0.0
         n_matched = 0
 
@@ -2680,14 +2677,12 @@ def match_baseline(
     # ── Multi-device session boundary consensus ──────────────────────
     # Collect session boundaries from ALL devices (anchor included).
     # Boundaries within snap_threshold are snapped to their mean.
-    all_bounds: Dict[str, np.ndarray] = {}
+    all_bounds: dict[str, np.ndarray] = {}
     for dn in device_names:
         if dn == anchor:
             sessions = ref_sessions
-            stretch = 1.0
         elif dn in _repos_store:
             sessions = _repos_store[dn][1]
-            stretch = 1.0  # already in repositioned space
         else:
             continue
         cum = 0.0
@@ -2701,15 +2696,15 @@ def match_baseline(
     # Cluster boundaries across devices
     if len(all_bounds) >= 2:
         # Collect all interior boundaries (not 0, not total)
-        all_pts: List[Tuple[float, str, int]] = []
+        all_pts: list[tuple[float, str, int]] = []
         for dn, b_arr in all_bounds.items():
             for bi in range(1, len(b_arr) - 1):
                 all_pts.append((b_arr[bi], dn, bi))
         all_pts.sort(key=lambda x: x[0])
 
         # Cluster: group consecutive boundaries within snap_threshold
-        clusters: List[List[Tuple[float, str, int]]] = []
-        current: List[Tuple[float, str, int]] = []
+        clusters: list[list[tuple[float, str, int]]] = []
+        current: list[tuple[float, str, int]] = []
         for pt in all_pts:
             if not current or pt[0] - current[-1][0] <= snap_threshold:
                 current.append(pt)
@@ -2744,13 +2739,13 @@ def match_baseline(
     # (Re-run for stored devices with updated markers)
     for dev_name in _repos_order:
         final_aligned, dev_sessions = _repos_store[dev_name]
-        t_other = sorted_dict[dev_name]
+        sorted_dict[dev_name]
 
         sort_idx = np.argsort(final_aligned)
         sorted_final = final_aligned[sort_idx]
         used = np.zeros(len(final_aligned), dtype=bool)
-        a_idxs: List[int] = []
-        b_idxs: List[int] = []
+        a_idxs: list[int] = []
+        b_idxs: list[int] = []
         total_dist = 0.0
         n_matched = 0
 
@@ -2809,7 +2804,7 @@ def match_baseline(
     mean_distance = float(np.mean(per_marker_distances[valid])) if valid.any() else 0.0
     n_matched_groups = int(valid.sum())
 
-    gaps: Dict[str, List[int]] = {}
+    gaps: dict[str, list[int]] = {}
     for d in device_names:
         if d not in group_indices:
             continue
@@ -2832,7 +2827,7 @@ def match_baseline(
     )
     result._gap_info = _all_gap_info
     # Build drift_params from shift_history
-    _dp: Dict[str, Dict[str, float]] = {anchor: {"offset": 0.0, "scale": 1.0}}
+    _dp: dict[str, dict[str, float]] = {anchor: {"offset": 0.0, "scale": 1.0}}
     for _dn in device_names[1:]:
         _hist = shift_history.get(_dn, [(0.0, 0.0)])
         _dp[_dn] = {"offset": _hist[0][0] if isinstance(_hist[0][0], float) else 0.0, "scale": 1.0}
@@ -2842,6 +2837,7 @@ def match_baseline(
 def match_baseline_cli(args: Any) -> None:
     """CLI entry point for ``multichsync marker basematch``."""
     import json as json_mod
+
     from .matcher import load_marker_csv_enhanced
 
     timeline_dir = args.timeline_dir
@@ -2864,11 +2860,11 @@ def match_baseline_cli(args: Any) -> None:
     save_json = not args.no_json
     save_fig = not args.no_fig
 
-    results: Dict[str, TraversalMatchResult] = {}
+    results: dict[str, TraversalMatchResult] = {}
     total_processed = 0
 
     for jf in json_files:
-        with open(jf, "r", encoding="utf-8") as f:
+        with open(jf, encoding="utf-8") as f:
             alignment = json_mod.load(f)
 
         subject_id = alignment.get("subject_id", "unknown")
@@ -2881,14 +2877,14 @@ def match_baseline_cli(args: Any) -> None:
         print(f"Subject {subject_id} (from {jf.name})")
 
         # Read top-level start/end alignment groups (filename lists)
-        start_groups: List[List[str]] = alignment.get("starttime_align", [])
-        end_groups: List[List[str]] = alignment.get("endtime_align", [])
+        start_groups: list[list[str]] = alignment.get("starttime_align", [])
+        end_groups: list[list[str]] = alignment.get("endtime_align", [])
         needmatch_set: set = set(alignment.get("needmatch", []))
 
         # Build filename → start_time lookup from start_groups.
         # Group 0 starts at 0.0; each subsequent group starts at the
         # cumulative max session-duration of all previous groups.
-        file_start_time: Dict[str, float] = {}
+        file_start_time: dict[str, float] = {}
         group_start = 0.0
         for group in start_groups:
             max_dur = 0.0
@@ -2906,7 +2902,7 @@ def match_baseline_cli(args: Any) -> None:
         # Build filename → target end time from end_groups.
         # Within each group, all files are stretched so they end at the
         # same time (the max natural end time of files in that group).
-        file_target_end: Dict[str, float] = {}
+        file_target_end: dict[str, float] = {}
         for group in end_groups:
             max_end = 0.0
             for fname in group:
@@ -2923,7 +2919,7 @@ def match_baseline_cli(args: Any) -> None:
                     file_target_end[fname] = max_end
 
         # Build session_dict from alignment JSON
-        session_dict: Dict[str, List[Dict[str, Any]]] = {}
+        session_dict: dict[str, list[dict[str, Any]]] = {}
         valid_devices = []
 
         for dev_info in devices_data:
@@ -2938,7 +2934,7 @@ def match_baseline_cli(args: Any) -> None:
 
             # Find marker CSV files for each data filename
             sessions = []
-            
+
             # Pre‑embedded raw markers (new JSON format)
             json_raw = dev_info.get("raw_markers", [])
 
@@ -2997,12 +2993,12 @@ def match_baseline_cli(args: Any) -> None:
         # ── Branch: basematch algorithm or alignment-group enforcement ──
         if not start_groups:
             # ── No alignment groups → run full basematch algorithm ──
-            marker_dict: Dict[str, np.ndarray] = {}
+            marker_dict: dict[str, np.ndarray] = {}
             for dn in valid_devices:
                 parts = [s["raw_markers"] for s in session_dict[dn] if len(s["raw_markers"]) > 0]
                 marker_dict[dn] = np.concatenate(parts) if parts else np.array([], dtype=float)
 
-            session_simple: Dict[str, List[Dict[str, Any]]] = {}
+            session_simple: dict[str, list[dict[str, Any]]] = {}
             for dn in valid_devices:
                 session_simple[dn] = [{"duration": s["duration"], "n_markers": s["n_markers"]} for s in session_dict[dn]]
 
@@ -3020,7 +3016,7 @@ def match_baseline_cli(args: Any) -> None:
                 continue
 
             # Build stack_out for saving
-            stack_out: Dict[str, Dict[str, Any]] = {}
+            stack_out: dict[str, dict[str, Any]] = {}
             for dn in result.device_names:
                 s = session_dict.get(dn, [])
                 total_dur = sum(ss["duration"] for ss in s)
@@ -3063,19 +3059,19 @@ def match_baseline_cli(args: Any) -> None:
             # For blocks of consecutive FREE sessions (not in start/end
             # groups), the remaining available time between fixed boundaries
             # is distributed EVENLY as gaps BETWEEN the free sessions.
-            device_starts: Dict[str, List[float]] = {}
-            device_gaps: Dict[str, List[float]] = {}
+            device_starts: dict[str, list[float]] = {}
+            device_gaps: dict[str, list[float]] = {}
 
             for dn in valid_devices:
                 sessions = session_dict[dn]
                 n_sess = len(sessions)
 
-                starts: List[float] = [0.0] * n_sess
-                gaps: List[float] = [0.0] * n_sess
+                starts: list[float] = [0.0] * n_sess
+                gaps: list[float] = [0.0] * n_sess
 
                 # --- First pass: position aligned sessions at fixed times ---
                 # Mark which sessions are in start/end alignment groups.
-                _aligned_mask_inner: List[bool] = [
+                _aligned_mask_inner: list[bool] = [
                     s.get("file_name", "") in _aligned_fnames
                     for s in sessions
                 ]
@@ -3183,7 +3179,7 @@ def match_baseline_cli(args: Any) -> None:
                 device_gaps[dn] = gaps
 
             # Step 2 — reposition markers with the computed session offsets
-            aligned_marker_dict: Dict[str, np.ndarray] = {}
+            aligned_marker_dict: dict[str, np.ndarray] = {}
             for dn in valid_devices:
                 sessions = session_dict[dn]
                 ss = device_starts[dn]
@@ -3231,14 +3227,14 @@ def match_baseline_cli(args: Any) -> None:
                 for s in _ref_sessions
             ]) if n_ref > 0 else np.array([], dtype=bool)
             n_ref_free = int(_ref_free_mask.sum())
-            t_ref_free = t_ref_all[_ref_free_mask]
+            t_ref_all[_ref_free_mask]
             print(f"    free sessions: {n_ref_free} markers (aligned sessions excluded from matching)")
 
             # Step 3 — Phase 2: session‑by‑session shift within gap bounds.
             # Only non‑aligned (free) sessions are refined.
-            final_marker_dict: Dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
-            final_gap_info: Dict[str, Tuple[List[float], List[float], List[float], List[int]]] = {}
-            shift_history: Dict[str, List[Tuple[float, float]]] = {}
+            final_marker_dict: dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
+            final_gap_info: dict[str, tuple[list[float], list[float], list[float], list[int]]] = {}
+            shift_history: dict[str, list[tuple[float, float]]] = {}
             # Ref gap info
             _ref_starts = device_starts[ref_name]
             _ref_gaps = device_gaps[ref_name]
@@ -3368,8 +3364,8 @@ def match_baseline_cli(args: Any) -> None:
             # Step 4 — Greedy nearest‑neighbour matching.
             # **Only free sessions are matched**; aligned sessions are copied
             # verbatim into the output with their fixed positions.
-            assignments: Dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
-            group_indices: Dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
+            assignments: dict[str, np.ndarray] = {ref_name: t_ref_all.copy()}
+            group_indices: dict[str, np.ndarray] = {ref_name: np.arange(n_ref, dtype=int)}
 
             for other_name in device_names[1:]:
                 t_other = final_marker_dict[other_name]
@@ -3399,7 +3395,7 @@ def match_baseline_cli(args: Any) -> None:
                 # original index positions.
                 def _find_marker_positions(
                     _markers: np.ndarray, _query: np.ndarray
-                ) -> Tuple[np.ndarray, np.ndarray]:
+                ) -> tuple[np.ndarray, np.ndarray]:
                     """For each query time, find closest marker position and index.
                     Returns (time_positions, indices) with NaN/-1 for gaps."""
                     _q_sorted = np.argsort(_markers)
@@ -3476,7 +3472,7 @@ def match_baseline_cli(args: Any) -> None:
             mean_distance = float(np.mean(per_marker_distances[valid_dist_mask])) if valid_dist_mask.any() else 0.0
             n_matched_groups = int(valid_dist_mask.sum())
 
-            gap_indices: Dict[str, List[int]] = {}
+            gap_indices: dict[str, list[int]] = {}
             for d in device_names:
                 gs = np.where(group_indices[d] == -1)[0].tolist()
                 if gs:
@@ -3526,7 +3522,7 @@ def match_baseline_cli(args: Any) -> None:
         results[subject_id] = result
         total_processed += 1
 
-    mode_str = f"aligned via JSON" if start_groups else "basematch (no alignment groups)"
+    mode_str = "aligned via JSON" if start_groups else "basematch (no alignment groups)"
     print(f"\n{'='*50}")
     print(f"Base matching complete ({total_processed} subject(s), {mode_str})")
     print(f"{'='*50}")

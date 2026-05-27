@@ -2,10 +2,11 @@
 ECG test fixtures - minimal mock CSV files for testing.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
 
 
 def create_ecg_csv(
@@ -35,7 +36,7 @@ def create_ecg_with_markers(path: Path, n_samples: int = 1000, fs: float = 250.0
     time = np.linspace(0, duration, n_samples)
 
     # Generate ECG-like signal with R-peaks
-    t = np.linspace(0, duration, n_samples)
+    np.linspace(0, duration, n_samples)
     ecg = np.zeros(n_samples)
 
     # Add simulated R-peaks at ~60 BPM (every 1 second)

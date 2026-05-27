@@ -5,10 +5,10 @@ Tests the convert_fnirs_to_snirf function from multichsync.fnirs.converter
 with various scenarios including basic conversion, stimulus events, and error handling.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import pandas as pd
+import pytest
 
 
 class TestConvertFnirsToSnirf:
@@ -35,7 +35,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.9	Averaing	1
 (1,1)(2,1)
-         	      ch- 1	    ch- 1
+                ch- 1        ch- 1
 Time(sec)	Task	Mark	Count	HbO1	HbR1	HbT1	HbO2	HbR2	HbT2
 0.0	00	0	0	0.1	0.3	0.5	0.2	0.4	0.6
 0.1	00	0	0	0.11	0.31	0.51	0.21	0.41	0.61
@@ -154,7 +154,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.7	Averaing	1
 (1,1)
-         	      ch- 1
+                ch- 1
 Time(sec)	Task	Mark	Count	HbO1
 0.0	00	0	0	0.1
 0.1	00	0	0	0.2
@@ -172,7 +172,7 @@ Time(sec)	Task	Mark	Count	HbO1
         output_path = temp_dir / "output_with_stim.snirf"
 
         # Run conversion
-        result = convert_fnirs_to_snirf(
+        convert_fnirs_to_snirf(
             txt_path=txt_path,
             src_coords_csv=src_coords,
             det_coords_csv=det_coords,
@@ -306,7 +306,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.4	Averaing	1
 (1,1)
-         	      ch- 1
+                ch- 1
 Time(sec)	Task	Mark	Count	HbO1
 0.0	00	0	0	0.1
 0.1	00	0	0	0.2
@@ -360,7 +360,7 @@ Time(sec)	Task	Mark	Count
 Output Mode	Continious	Task No.	Data Type	Hb
 Time Range	0	0.4	Averaing	1
 (1,1)(1,2)(2,1)(2,2)
-         	      ch- 1	    ch- 1	    ch- 2	    ch- 2
+                ch- 1        ch- 1        ch- 2        ch- 2
 Time(sec)	Task	Mark	Count	HbO1	HbR1	HbO2	HbR2
 0.0	00	0	0	0.1	0.2	0.3	0.4
 0.1	00	0	0	0.11	0.21	0.31	0.41
@@ -374,7 +374,7 @@ Time(sec)	Task	Mark	Count	HbO1	HbR1	HbO2	HbR2
         src_coords, det_coords = mock_coords
         output_path = temp_dir / "output_channels.snirf"
 
-        result = convert_fnirs_to_snirf(
+        convert_fnirs_to_snirf(
             txt_path=txt_path,
             src_coords_csv=src_coords,
             det_coords_csv=det_coords,

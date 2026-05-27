@@ -9,26 +9,24 @@ from pathlib import Path
 
 import pandas as pd
 
-from .fnirs import convert_fnirs_to_snirf, batch_convert_fnirs_to_snirf
-from .ecg import convert_acq_to_csv, batch_convert_acq_to_csv
-from .eeg import convert_eeg_format, batch_convert_eeg_format
+from .ecg import batch_convert_acq_to_csv, convert_acq_to_csv
+from .eeg import batch_convert_eeg_format, convert_eeg_format
+from .fnirs import batch_convert_fnirs_to_snirf, convert_fnirs_to_snirf
 from .marker import (
+    clean_marker_csv,
+    clean_marker_folder,
     extract_biopac_marker,
     extract_brainvision_marker,
     extract_fnirs_marker,
-    clean_marker_csv,
-    clean_marker_folder,
     extract_marker_info,
-    clean_marker_folder,
 )
 from .marker.timeline_cropper import crop_timelines_to_shortest
 from .quality import (
-    process_one_snirf,
-    batch_process_snirf_folder,
     batch_compute_resting_metrics,
-    process_one_snirf_with_metadata,
+    batch_process_snirf_folder,
     batch_process_snirf_folder_with_metadata,
-    generate_all_visualizations,
+    process_one_snirf,
+    process_one_snirf_with_metadata,
 )
 
 # Mapping from CLI method names to internal method names
@@ -248,8 +246,6 @@ def marker_extract(args):
 
 def marker_batch(args):
     """处理marker批量提取命令"""
-    import glob
-    import os
 
     try:
         # Determine types to process
@@ -278,7 +274,7 @@ def marker_batch(args):
                     stats["skipped"] += 1
                     continue
                 try:
-                    df = extract_fnirs_marker(
+                    extract_fnirs_marker(
                         input_csv=csv_file, output_csv=output_file
                     )
                     stats["fnirs"] += 1
@@ -306,7 +302,7 @@ def marker_batch(args):
                     stats["skipped"] += 1
                     continue
                 try:
-                    df = extract_biopac_marker(
+                    extract_biopac_marker(
                         input_csv=csv_file,
                         output_csv=output_file,
                         fs=args.fs,
@@ -339,7 +335,7 @@ def marker_batch(args):
                     stats["skipped"] += 1
                     continue
                 try:
-                    df = extract_brainvision_marker(
+                    extract_brainvision_marker(
                         vmrk_path=vmrk_file, output_csv=output_file
                     )
                     stats["eeg"] += 1
@@ -347,7 +343,7 @@ def marker_batch(args):
                     stats["failed"] += 1
                     print(f"  [FAILED] {vmrk_file.name}: {e}")
 
-        print(f"\nBatch marker extraction complete:")
+        print("\nBatch marker extraction complete:")
         print(f"  fNIRS: {stats['fnirs']} files")
         print(f"  ECG:   {stats['ecg']} files")
         print(f"  EEG:   {stats['eeg']} files")
@@ -406,7 +402,7 @@ def marker_clean(args):
                 remove_start=args.remove_start,
             )
 
-            print(f"Cleaning complete, file statistics:")
+            print("Cleaning complete, file statistics:")
             for status, count in summary.items():
                 if count > 0:
                     print(f"  {status}: {count}")
@@ -422,6 +418,7 @@ def marker_info(args):
     """处理marker信息提取+timeline生成命令"""
     try:
         from pathlib import Path
+
         from multichsync.marker.timeline import generate_timeline_figures
 
         input_dir = Path(args.input_dir) if args.input_dir else Path("Data/marker")
@@ -435,7 +432,7 @@ def marker_info(args):
             recursive=recursive, skip_csv=True,
         )
 
-        print(f"Marker info extraction complete:")
+        print("Marker info extraction complete:")
         print(f"  Input directory: {input_dir}")
         print(f"  Output directory: {output_dir}")
         print(f"  Recursive: {recursive}")
@@ -488,14 +485,14 @@ def marker_crop(args):
             include_metadata=not args.no_metadata,
         )
 
-        print(f"Timeline crop complete!")
+        print("Timeline crop complete!")
         print(f"  Reference device: {result['crop_info']['reference_device']}")
         print(
             f"  Time range: {result['crop_info']['reference_start']:.3f}s - {result['crop_info']['reference_end']:.3f}s"
         )
         print(f"  Cropped devices: {len(result['crop_info']['cropped_devices'])}")
         print(f"  Output directory: {output_dir}")
-        print(f"  Output files:")
+        print("  Output files:")
         for name, path in result["output_files"].items():
             print(f"    {name}: {path}")
 
@@ -516,10 +513,11 @@ def marker_matchcrop(args):
       3. 传统连续裁剪(--json-path + --start-time + --end-time): 保留向后兼容
     """
     from pathlib import Path
+
     from multichsync.marker.matchcrop_aligned import (
+        batch_matchcrop_from_matching_dir,
         matchcrop_aligned,
         matchcrop_by_sessions,
-        batch_matchcrop_from_matching_dir,
     )
 
     try:
@@ -531,7 +529,7 @@ def marker_matchcrop(args):
                 convert_base_dir="Data/convert",
                 output_mode=args.output_mode,
             )
-            print(f"\nBatch matchcrop complete!")
+            print("\nBatch matchcrop complete!")
             print(f"  Subjects processed: {len(result)}")
             return
 
@@ -552,7 +550,7 @@ def marker_matchcrop(args):
                 convert_base_dir="Data/convert",
                 output_mode=args.output_mode,
             )
-            print(f"\nMatchCrop complete!")
+            print("\nMatchCrop complete!")
             print(f"  Subject: {result.get('subject_id', '?')}")
             print(f"  Reference device: {result.get('reference_device', '?')}")
             print(f"  Task: {result.get('taskname', '?')}")
@@ -578,7 +576,7 @@ def marker_matchcrop(args):
             taskname=None,
         )
 
-        print(f"MatchCrop complete!")
+        print("MatchCrop complete!")
         print(
             f"  Crop time range: {result['crop_time_range'][0]:.3f}s - {result['crop_time_range'][1]:.3f}s"
         )
@@ -601,16 +599,17 @@ def marker_matchcrop(args):
 
 def marker_manual_match(args):
     """处理manual-match命令 - 从BIDS文件直接匹配并应用手动偏移量"""
-    from pathlib import Path
     import json as json_mod
-    from multichsync.marker.adjust_offsets import parse_offset_list, rebuild_timeline
-    from multichsync.marker.matcher import load_marker_csv_enhanced, DriftResult
+    from pathlib import Path
+
     from multichsync.marker import apply_drift_correction
-    
+    from multichsync.marker.adjust_offsets import parse_offset_list, rebuild_timeline
+    from multichsync.marker.matcher import DriftResult, load_marker_csv_enhanced
+
     try:
         output_dir = Path(args.output_dir) if args.output_dir else Path("Data/matching")
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Load marker files
         file_paths = []
         for f in args.input_files:
@@ -619,26 +618,26 @@ def marker_manual_match(args):
                 file_paths.append(str(p))
             else:
                 raise FileNotFoundError(f"File not found: {f}")
-        
+
         device_names_specified = args.device_names if args.device_names else None
         internal_method = METHOD_NAME_MAPPING.get(args.method, "hungarian")
-        
+
         # Load devices
         devices = []
         for i, fpath in enumerate(file_paths):
             name = device_names_specified[i] if (device_names_specified and i < len(device_names_specified)) else None
             dev = load_marker_csv_enhanced(fpath, name)
             devices.append(dev)
-        
+
         # Parse offsets
         offset_list = parse_offset_list(args.offsets)
-        
+
         # Build device -> offset map
         if device_names_specified:
             offset_map = dict(zip(device_names_specified, offset_list))
         else:
             offset_map = {dev.name: offset_list[i] if i < len(offset_list) else 0.0 for i, dev in enumerate(devices)}
-        
+
         # Apply offsets to each device
         adjusted_devices = []
         for dev in devices:
@@ -654,7 +653,7 @@ def marker_manual_match(args):
             dev.timestamps_corrected = apply_drift_correction(dev.timestamps_raw, manual_drift)
             adjusted_devices.append(dev)
             print(f"  Device {dev.name}: offset {offset:+.3f}s ({len(dev.timestamps_raw)} markers)")
-        
+
         # Rebuild consensus timeline with applied offsets
         print("Rebuilding consensus timeline...")
         timeline = rebuild_timeline(
@@ -663,13 +662,13 @@ def marker_manual_match(args):
             sigma_time_s=args.sigma_time,
             max_time_diff_s=args.max_time_diff
         )
-        
+
         # Save timeline CSV
         merged_df = timeline.get_merged_dataframe()
         csv_path = output_dir / f"{args.prefix}_timeline.csv"
         merged_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         print(f"Timeline saved: {csv_path}")
-        
+
         # Build and save metadata JSON
         timeline_meta = timeline.get_metadata()
         device_info_list = []
@@ -682,7 +681,7 @@ def marker_manual_match(args):
                 "time_range": list(dev.time_range) if dev.time_range else [0.0, 0.0],
                 "drift_correction": dev.drift_result.to_dict() if dev.drift_result else None,
             })
-        
+
         metadata = {
             "algorithm": f"manual_match_{internal_method}",
             "offsets_applied": offset_map,
@@ -697,14 +696,14 @@ def marker_manual_match(args):
             "timeline_metadata": timeline_meta,
             "output_files": {"timeline_csv": str(csv_path)},
         }
-        
+
         json_path_out = output_dir / f"{args.prefix}_metadata.json"
         with open(json_path_out, 'w', encoding='utf-8') as f:
             json_mod.dump(metadata, f, indent=2, default=str)
         print(f"Metadata saved: {json_path_out}")
-        
+
         # Print summary
-        print(f"\nManual matching complete!")
+        print("\nManual matching complete!")
         print(f"  Output directory: {output_dir}")
         print(f"  Timeline file: {csv_path}")
         print(f"  Metadata file: {json_path_out}")
@@ -712,7 +711,7 @@ def marker_manual_match(args):
         print(f"  Adjusted devices: {len(adjusted_devices)}")
         for dev in adjusted_devices:
             print(f"    {dev.name}: offset {dev.drift_result.offset:+.3f}s")
-        
+
     except Exception as e:
         print(f"Manual matching failed: {e}")
         import traceback
@@ -764,7 +763,7 @@ def quality_assess(args):
             events=None,
         )
 
-        print(f"Quality assessment complete:")
+        print("Quality assessment complete:")
         print(f"  Output directory: {output_dir}")
         print(f"  HbO channels: {summary['n_hbo_channels']}")
         print(f"  HbR channels: {summary['n_hbr_channels']}")
@@ -807,7 +806,7 @@ def quality_batch(args):
             events=None,
         )
 
-        print(f"Batch quality assessment complete:")
+        print("Batch quality assessment complete:")
         print(f"  Output directory: {output_dir}")
         print(f"  Files processed: {len(summary_df)}")
         print(f"  Failed files: {len(failed)}")
@@ -854,7 +853,7 @@ def quality_assess_with_metadata(args):
             overwrite=args.overwrite,
         )
 
-        print(f"Quality assessment complete (with metadata write):")
+        print("Quality assessment complete (with metadata write):")
         print(f"  Output directory: {output_dir}")
         print(f"  HbO channels: {summary['n_hbo_channels']}")
         print(f"  HbR channels: {summary['n_hbr_channels']}")
@@ -864,7 +863,7 @@ def quality_assess_with_metadata(args):
         if summary["metadata_written"]:
             print(f"  Metadata written to: {summary['output_snirf_file']}")
         else:
-            print(f"  Warning: metadata not written")
+            print("  Warning: metadata not written")
 
         if summary["report_csv_file"]:
             print(f"  Single-row report CSV: {summary['report_csv_file']}")
@@ -905,7 +904,7 @@ def quality_batch_with_metadata(args):
             overwrite=args.overwrite,
         )
 
-        print(f"Batch quality assessment complete (with metadata write):")
+        print("Batch quality assessment complete (with metadata write):")
         print(f"  Output directory: {output_dir}")
         print(f"  Files processed: {len(summary_df)}")
         print(f"  Failed files: {len(failed)}")
@@ -944,7 +943,7 @@ def quality_resting_metrics(args):
             temp_dir=args.temp_dir,
         )
 
-        print(f"Resting-state metrics computation complete:")
+        print("Resting-state metrics computation complete:")
         print(f"  Input directory: {input_dir}")
         print(f"  Output directory: {output_dir}")
         print(f"  Files processed: {len(summary_df)}")
@@ -953,7 +952,7 @@ def quality_resting_metrics(args):
         if len(summary_df) > 0 and "mean_reliability" in summary_df.columns:
             valid_rel = summary_df["mean_reliability"].dropna()
             if len(valid_rel) > 0:
-                print(f"  Mean reliability statistics:")
+                print("  Mean reliability statistics:")
                 print(f"    Min: {valid_rel.min():.3f}")
                 print(f"    Max: {valid_rel.max():.3f}")
                 print(f"    Median: {valid_rel.median():.3f}")
@@ -973,6 +972,7 @@ def quality_visualize(args):
     """处理质量评估可视化命令"""
     try:
         from pathlib import Path
+
         from multichsync.quality.visualization import generate_all_visualizations
 
         input_path = Path(args.input)
@@ -993,7 +993,7 @@ def quality_visualize(args):
             dpi=args.dpi,
         )
 
-        print(f"Quality assessment visualization complete:")
+        print("Quality assessment visualization complete:")
         print(f"  Output directory: {output_dir}")
 
         for viz_type, path in results.items():
@@ -1014,8 +1014,8 @@ def quality_visualize_batch(args):
     """批量生成质量评估可视化"""
     try:
         from pathlib import Path
+
         from multichsync.quality.visualization import generate_all_visualizations
-        import glob
 
         input_dir = Path(args.input_dir)
         output_dir = Path(args.output_dir) if args.output_dir else input_dir
@@ -1080,7 +1080,7 @@ def quality_visualize_batch(args):
                 failed_files.append(stem)
                 print(f"  Error {stem}: {e}")
 
-        print(f"\nBatch visualization complete:")
+        print("\nBatch visualization complete:")
         print(f"  Succeeded: {success_count}")
         print(f"  Failed: {len(failed_files)}")
 

@@ -5,9 +5,11 @@ EEG批量转换
 
 import os
 from pathlib import Path
-from typing import List, Optional, Union, Literal, Tuple
+from typing import List, Literal, Optional, Tuple, Union
 
-from .converter import convert_eeg_format, convert_eeg_to_brainvision, convert_eeg_to_eeglab, convert_eeg_to_edf
+from .converter import (
+    convert_eeg_format,
+)
 
 # Export format types
 ExportFormat = Literal["BrainVision", "EEGLAB", "EDF"]
@@ -23,7 +25,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                              recursive: bool = False) -> List[Tuple[str, str]]:
     """
     批量转换EEG文件格式
-    
+
     Parameters
     ----------
     input_dir : str or Path
@@ -51,13 +53,13 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
     input_dir = Path(input_dir)
     if not input_dir.exists():
         raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
-    
+
     # Determine output directory
     if output_dir is None:
         output_dir = input_dir.parent / "convert"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Supported input file extensions
     supported_extensions = {
         # EEGLAB format
@@ -65,7 +67,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
         # Curry format
         '.cdt', '.dap', '.dat', '.rs3', '.cef', '.cdt.dpa'
     }
-    
+
     # Collect files
     eeg_files = []
     if recursive:
@@ -101,18 +103,18 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                         # Skip .fdt, let .set file handle
                         continue
                 eeg_files.append(file_path)
-    
+
     total_files = len(eeg_files)
     if total_files == 0:
         print(f"No supported EEG files found in {input_dir}")
         return []
-    
+
     print(f"Found {total_files} EEG files")
     print(f"Output format: {export_format}")
     print(f"Output directory: {output_dir}")
-    
+
     converted_files = []
-    
+
     for i, input_file in enumerate(eeg_files, 1):
         try:
             # Determine relative path (for maintaining directory structure)
@@ -125,7 +127,7 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                 output_file = output_subdir / (input_file.stem + _get_extension_for_format(export_format))
             else:
                 output_file = output_dir / (input_file.stem + _get_extension_for_format(export_format))
-            
+
             # Execute conversion
             raw, output_path = convert_eeg_format(
                 file_path=input_file,
@@ -136,13 +138,13 @@ def batch_convert_eeg_format(input_dir: Union[str, Path],
                 verbose=verbose,
                 sampling_rate=sampling_rate
             )
-            
+
             converted_files.append((str(input_file), output_path))
             print(f"[{i}/{total_files}] Conversion successful: {input_file.name} -> {os.path.relpath(output_path, output_dir)}")
-            
+
         except Exception as e:
             print(f"[{i}/{total_files}] Conversion failed {input_file.name}: {e}")
-    
+
     print(f"\nTotal converted: {len(converted_files)}/{total_files} files")
     return converted_files
 
@@ -155,7 +157,7 @@ def batch_convert_eeg_to_brainvision(input_dir: Union[str, Path],
                                      recursive: bool = False) -> List[Tuple[str, str]]:
     """
     批量转换EEG文件为BrainVision格式
-    
+
     Parameters
     ----------
     input_dir : str or Path
@@ -170,7 +172,7 @@ def batch_convert_eeg_to_brainvision(input_dir: Union[str, Path],
         是否显示详细输出
     recursive : bool, optional
         是否递归搜索子目录，默认False
-        
+
     Returns
     -------
     list
@@ -195,7 +197,7 @@ def batch_convert_eeg_to_eeglab(input_dir: Union[str, Path],
                                 recursive: bool = False) -> List[Tuple[str, str]]:
     """
     批量转换EEG文件为EEGLAB格式
-    
+
     Parameters
     ----------
     input_dir : str or Path
@@ -210,7 +212,7 @@ def batch_convert_eeg_to_eeglab(input_dir: Union[str, Path],
         是否显示详细输出
     recursive : bool, optional
         是否递归搜索子目录，默认False
-        
+
     Returns
     -------
     list
@@ -235,7 +237,7 @@ def batch_convert_eeg_to_edf(input_dir: Union[str, Path],
                              recursive: bool = False) -> List[Tuple[str, str]]:
     """
     批量转换EEG文件为EDF格式
-    
+
     Parameters
     ----------
     input_dir : str or Path
@@ -250,7 +252,7 @@ def batch_convert_eeg_to_edf(input_dir: Union[str, Path],
         是否显示详细输出
     recursive : bool, optional
         是否递归搜索子目录，默认False
-        
+
     Returns
     -------
     list
@@ -270,12 +272,12 @@ def batch_convert_eeg_to_edf(input_dir: Union[str, Path],
 def _get_extension_for_format(export_format: ExportFormat) -> str:
     """
     获取导出格式对应的文件扩展名
-    
+
     Parameters
     ----------
     export_format : ExportFormat
         导出格式
-        
+
     Returns
     -------
     str

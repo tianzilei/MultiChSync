@@ -4,9 +4,9 @@ ECG数据写入器
 """
 
 import os
-import pandas as pd
 from typing import Dict, List, Optional
-import numpy as np
+
+import pandas as pd
 
 
 def write_ecg_csv(

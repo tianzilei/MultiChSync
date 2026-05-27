@@ -6,13 +6,12 @@ MatchCrop: 匹配后裁剪多设备原始数据
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import h5py
 import mne
 import numpy as np
 import pandas as pd
-
 
 # Data file path mapping table
 DATA_PATH_MAP = {
@@ -124,7 +123,7 @@ def crop_ecg_data(
                     f"CSV file '{input_file.name}' appears to have no header row. "
                     f"Auto-assigning column names. If this is incorrect, "
                     f"please ensure the CSV has a header row.",
-                    UserWarning,
+                    UserWarning, stacklevel=2,
                 )
 
                 df = pd.read_csv(input_file, header=None)
@@ -300,7 +299,7 @@ def crop_fnirs_data(
             # If requested time range exceeds data range, use entire dataset
             start_idx = 0
             end_idx = len(times)
-            print(f"    Warning: requested time range exceeds data range, using entire dataset")
+            print("    Warning: requested time range exceeds data range, using entire dataset")
 
         # Read data
         data_key = "nirs/data1/dataTimeSeries"
@@ -431,7 +430,7 @@ def matchcrop(
     Dict : 处理结果统计
     """
     # Read metadata
-    with open(metadata_json, "r") as f:
+    with open(metadata_json) as f:
         metadata = json.load(f)
 
     # Get device info
@@ -493,7 +492,7 @@ def matchcrop(
         input_file = find_raw_data_file(device_name, device_type)
 
         if input_file is None:
-            print(f"    -> Warning: data file not found, skipping")
+            print("    -> Warning: data file not found, skipping")
             continue
 
         print(f"    Input file: {input_file}")
@@ -533,7 +532,7 @@ def matchcrop(
                 results["output_files"][device_name] = crop_result
 
             results["cropped_devices"].append(device_name)
-            print(f"    -> Crop complete")
+            print("    -> Crop complete")
 
         except Exception as e:
             print(f"    -> Crop failed: {e}")
@@ -588,7 +587,7 @@ def main():
         output_prefix=args.output_prefix,
     )
 
-    print(f"\nProcessing complete!")
+    print("\nProcessing complete!")
     print(f"  Reference device: {result['reference_device']}")
     print(f"  Devices cropped: {len(result['cropped_devices'])}")
     print(f"  Output directory: {args.output_dir}")
